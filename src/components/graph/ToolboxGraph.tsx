@@ -17,16 +17,15 @@ import { ToolNode } from './ToolNode.tsx';
 import { IdeaNode } from './IdeaNode.tsx';
 import { NeedNode } from './NeedNode.tsx';
 import { AddPhaseNode } from './AddPhaseNode.tsx';
+import { CategoryLabelNode } from './CategoryLabelNode.tsx';
 import { RelationEdge } from './RelationEdge.tsx';
 import {
-  Lightbulb,
-  ChevronsRight,
-  MessageSquare,
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Minimize2,
-  RotateCcw
+  ChevronDown,
+  ChevronUp,
+  Compass,
 } from 'lucide-react';
 
 const nodeTypes = {
@@ -35,6 +34,7 @@ const nodeTypes = {
   idea: IdeaNode,
   need: NeedNode,
   addPhase: AddPhaseNode,
+  categoryLabel: CategoryLabelNode,
 };
 
 const edgeTypes = {
@@ -47,6 +47,7 @@ interface ToolboxGraphProps {
   filters: FilterState;
   focusedPhaseId: string | null;
   focusedItemId: string | null;
+  isDrawerOpen?: boolean;
   onSelectPhase: (phaseId: string) => void;
   onSelectItem: (item: Item) => void;
   onClearFocus: () => void;
@@ -64,6 +65,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   filters,
   focusedPhaseId,
   focusedItemId,
+  isDrawerOpen,
   onSelectPhase,
   onSelectItem,
   onClearFocus,
@@ -73,7 +75,8 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   onAddNeed,
   onUpdateItemPosition,
 }) => {
-  const { zoomIn, zoomOut, setViewport, getZoom } = useReactFlow();
+  const { zoomIn, zoomOut, setViewport, fitView } = useReactFlow();
+  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = React.useState(false);
 
   // Selected item reference if any
   const focusedItem = useMemo(
@@ -92,13 +95,63 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     const centerY = 360;
     const phaseWidth = 210;
     const phaseGap = 46; // Gap includes the AddPhase circular button
+    const phaseStartX = 140; // Shift phases right to leave detached space from left category labels
+
+    // Counts for Category Labels
+    const totalTools = items.filter(i => i.type === 'TOOL').length;
+    const totalIdeas = items.filter(i => i.type === 'IDEA').length;
+    const totalNeeds = items.filter(i => i.type === 'NEED').length;
+
+    // 0. Integrated Category Labels
+    // Attached to graph canvas, zooms and pans naturally, detached to the left and vertically aligned to areas
+    nodes.push({
+      id: 'category-label-tool-idea',
+      type: 'categoryLabel',
+      position: { x: -200, y: 110 },
+      data: {
+        category: 'TOOL_IDEA',
+        title: 'Tool e Idee',
+        subtitle: 'Asset e soluzioni di automazione T&A',
+        countLabel: `${totalTools} tool · ${totalIdeas} idee`,
+      },
+      draggable: false,
+      selectable: false,
+    });
+
+    nodes.push({
+      id: 'category-label-phase',
+      type: 'categoryLabel',
+      position: { x: -200, y: 366 },
+      data: {
+        category: 'PHASE',
+        title: 'Fasi Processo T&A',
+        subtitle: 'Sequenza end-to-end a matitone',
+        countLabel: `${sortedPhases.length} fasi`,
+      },
+      draggable: false,
+      selectable: false,
+    });
+
+    nodes.push({
+      id: 'category-label-need',
+      type: 'categoryLabel',
+      position: { x: -200, y: 640 },
+      data: {
+        category: 'NEED',
+        title: 'Esigenze',
+        subtitle: 'Bisogni operativi e gap da colmare',
+        countLabel: `${totalNeeds} esigenze`,
+      },
+      draggable: false,
+      selectable: false,
+    });
 
     // 1. Position Phases and Inter-Phase (+) Buttons
     // Initial AddPhase button before first phase
     nodes.push({
       id: 'add-phase-start',
       type: 'addPhase',
-      position: { x: -44, y: centerY + 31 },
+      position: { x: phaseStartX - 44, y: centerY + 31 },
       data: {
         targetIndex: 0,
         onAddPhase,
@@ -108,7 +161,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     });
 
     sortedPhases.forEach((phase, idx) => {
-      const phaseX = idx * (phaseWidth + phaseGap);
+      const phaseX = phaseStartX + idx * (phaseWidth + phaseGap);
       phaseXMap.set(phase.id, phaseX);
 
       const isPhaseSelected = focusedPhaseId === phase.id || (focusedItem?.phaseIds.includes(phase.id) ?? false);
@@ -183,8 +236,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
 
     // 3. Layout Top Items (Tools & Ideas)
     const topItems = visibleItems.filter(i => i.type === 'TOOL' || i.type === 'IDEA');
-    // Group top items by approximate anchor X to arrange them in tiers without collision
-    const topSlots = new Map<number, number>(); // slotIndex -> count
+    const topSlots = new Map<number, number>();
 
     topItems.forEach((item) => {
       const isSearchMatch = matchesSearch(item);
@@ -200,7 +252,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
         isDimmed = true;
       }
 
-      // Compute ideal X
+      // Compute ideal X centered over covered phases
       let itemX = 0;
       if (typeof item.positionX === 'number') {
         itemX = item.positionX;
@@ -213,16 +265,15 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           const avgX = validXList.reduce((acc, curr) => acc + curr + phaseWidth / 2, 0) / validXList.length;
           itemX = avgX - 60;
         } else {
-          itemX = 100;
+          itemX = phaseStartX + 40;
         }
       }
 
-      // Slot index around increments of 140px
       const slotIndex = Math.round(itemX / 140);
       const countInSlot = topSlots.get(slotIndex) || 0;
       topSlots.set(slotIndex, countInSlot + 1);
 
-      // Vertical tiers: 170 (closest), 30 (mid), -110 (top)
+      // Vertical tiers above phases: 170 (closest), 30 (mid), -110 (top), -250 (higher)
       const tiersY = [170, 30, -110, -250];
       const tierIndex = countInSlot % tiersY.length;
       const horizontalOffset = countInSlot > 0 ? (countInSlot % 2 === 1 ? -35 : 35) : 0;
@@ -282,6 +333,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     });
 
     // 4. Layout Bottom Items (Needs / Esigenze)
+    // Placed well below phases with ample breathing room to prevent overlap with bottom UI
     const bottomItems = visibleItems.filter(i => i.type === 'NEED');
     const bottomSlots = new Map<number, number>();
 
@@ -311,16 +363,16 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           const avgX = validXList.reduce((acc, curr) => acc + curr + phaseWidth / 2, 0) / validXList.length;
           itemX = avgX - 60;
         } else {
-          itemX = 100;
+          itemX = phaseStartX + 40;
         }
       }
 
-      const slotIndex = Math.round(itemX / 130);
+      const slotIndex = Math.round(itemX / 140);
       const countInSlot = bottomSlots.get(slotIndex) || 0;
       bottomSlots.set(slotIndex, countInSlot + 1);
 
-      // Vertical tiers below phases: 510 (closest), 650 (mid), 790 (low)
-      const tiersY = [510, 650, 790, 930];
+      // Vertical tiers below phases: 540 (closest), 680 (mid), 820 (low), 960 (lower)
+      const tiersY = [540, 680, 820, 960];
       const tierIndex = countInSlot % tiersY.length;
       const horizontalOffset = countInSlot > 0 ? (countInSlot % 2 === 1 ? -35 : 35) : 0;
 
@@ -414,53 +466,15 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   );
 
   const handleResetView = () => {
-    setViewport({ x: 100, y: 120, zoom: 0.85 });
+    setViewport({ x: 260, y: 130, zoom: 0.82 });
+  };
+
+  const handleFitView = () => {
+    fitView({ padding: 0.2, duration: 400 });
   };
 
   return (
     <div className="w-full h-full relative select-none bg-[#FAFBFD]">
-      {/* Category Labels on Left (as in Screenshot 1) */}
-      <div className="absolute left-6 top-1/2 -translate-y-1/2 pointer-events-none z-10 flex flex-col justify-between h-[520px] select-none">
-        {/* Tool & Idee Label */}
-        <div className="flex items-start gap-2.5 bg-white/80 backdrop-blur-xs p-2.5 rounded-xl border border-slate-200/80 shadow-2xs max-w-[170px]">
-          <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg shrink-0 mt-0.5">
-            <Lightbulb className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-bold text-xs text-slate-800">Tool e Idee</div>
-            <div className="text-[10px] text-slate-500 leading-tight">
-              Clicca + sopra la fase per aggiungere
-            </div>
-          </div>
-        </div>
-
-        {/* Fasi Processo T&A Label */}
-        <div className="flex items-start gap-2.5 bg-white/80 backdrop-blur-xs p-2.5 rounded-xl border border-slate-200/80 shadow-2xs max-w-[170px]">
-          <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg shrink-0 mt-0.5">
-            <ChevronsRight className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-bold text-xs text-slate-800">Fasi processo T&A</div>
-            <div className="text-[10px] text-slate-500 leading-tight">
-              Clicca + tra le fasi o sulla fase per aggiungere
-            </div>
-          </div>
-        </div>
-
-        {/* Esigenze Label */}
-        <div className="flex items-start gap-2.5 bg-white/80 backdrop-blur-xs p-2.5 rounded-xl border border-slate-200/80 shadow-2xs max-w-[170px]">
-          <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg shrink-0 mt-0.5">
-            <MessageSquare className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-bold text-xs text-slate-800">Esigenze</div>
-            <div className="text-[10px] text-slate-500 leading-tight">
-              Clicca + sotto la fase per aggiungere
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Main React Flow Canvas */}
       <ReactFlow
         nodes={nodes}
@@ -471,41 +485,94 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onPaneClick={onClearFocus}
-        defaultViewport={{ x: 120, y: 110, zoom: 0.85 }}
+        defaultViewport={{ x: 260, y: 130, zoom: 0.82 }}
         minZoom={0.25}
         maxZoom={1.8}
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.2 }}
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}
-        proOptions={{ hideAttribution: true }}
       >
         {/* Subtle grid dots background */}
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} color="#E2E8F0" />
 
-        {/* MiniMap in bottom-left corner (Spec 46) */}
-        <div className="absolute bottom-5 left-6 z-20 bg-white p-2 rounded-xl shadow-lg border border-slate-200 pointer-events-auto">
-          <div className="text-[10px] font-bold text-slate-500 mb-1">Panoramica</div>
-          <MiniMap
-            zoomable
-            pannable
-            className="!relative !m-0 !w-44 !h-24 !rounded-lg !border !border-slate-100 !bg-slate-50"
-            nodeColor={(n) => {
-              if (n.type === 'phase') return '#3B82F6';
-              if (n.type === 'tool') return '#60A5FA';
-              if (n.type === 'idea') return '#C084FC';
-              if (n.type === 'need') return '#4ADE80';
-              return '#CBD5E1';
-            }}
-          />
+        {/* Panoramica Integrated Card in bottom-left corner */}
+        <div className="absolute bottom-5 left-6 z-20 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/90 pointer-events-auto overflow-hidden transition-all duration-300">
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50/90 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Compass className="w-3.5 h-3.5 text-purple-600" />
+              <span className="text-[11px] font-bold tracking-wider text-slate-800 uppercase">
+                Panoramica
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMiniMapCollapsed(!isMiniMapCollapsed)}
+              className="p-1 hover:text-slate-900 text-slate-400 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer"
+              title={isMiniMapCollapsed ? 'Espandi Panoramica' : 'Comprimi Panoramica'}
+            >
+              {isMiniMapCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          {!isMiniMapCollapsed ? (
+            <div className="p-2 bg-slate-50/40">
+              <MiniMap
+                zoomable
+                pannable
+                style={{
+                  width: 200,
+                  height: 110,
+                  background: '#FAFBFD',
+                  margin: 0,
+                  borderRadius: '10px',
+                  border: '1px solid #E2E8F0',
+                }}
+                maskColor="rgba(161, 0, 255, 0.08)"
+                maskStrokeColor="#7928CA"
+                maskStrokeWidth={1.5}
+                nodeBorderRadius={6}
+                nodeColor={(n) => {
+                  if (n.type === 'phase') return '#3B82F6';
+                  if (n.type === 'tool') return '#2563EB';
+                  if (n.type === 'idea') return '#9333EA';
+                  if (n.type === 'need') return '#16A34A';
+                  return 'transparent';
+                }}
+              />
+              {/* Integrated mini legend */}
+              <div className="flex items-center justify-around px-1 pt-2 pb-0.5 text-[9px] text-slate-500 font-semibold border-t border-slate-100/80 mt-1.5">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-600" /> Tool
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-purple-600" /> Idee
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600" /> Esigenze
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div
+              onClick={() => setIsMiniMapCollapsed(false)}
+              className="px-3.5 py-1.5 text-[10px] text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1.5 hover:bg-slate-50 transition-colors"
+            >
+              <span className="text-[10px] font-medium">Mostra mappa</span>
+            </div>
+          )}
         </div>
 
-        {/* Zoom & Fullscreen Controls in bottom-right (Spec 47) */}
-        <div className="absolute bottom-6 right-48 z-20 flex items-center bg-white rounded-full shadow-lg border border-slate-200 p-1 text-slate-700 pointer-events-auto">
+        {/* Zoom & Fullscreen Controls in bottom-right (Spec 47) - Clear separation from drawers and assistant */}
+        <div
+          className={`absolute bottom-6 z-20 flex items-center bg-white rounded-full shadow-lg border border-slate-200 p-1 text-slate-700 pointer-events-auto transition-all duration-300 ${
+            isDrawerOpen ? 'right-[610px] md:right-[660px]' : 'right-48'
+          }`}
+        >
           <button
             type="button"
             onClick={() => zoomOut()}
-            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
             title="Zoom out"
           >
             <ZoomOut className="w-4 h-4" />
@@ -513,15 +580,23 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           <button
             type="button"
             onClick={handleResetView}
-            className="px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+            className="px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
             title="Reset vista 100%"
           >
             100%
           </button>
           <button
             type="button"
+            onClick={handleFitView}
+            className="px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-50 rounded-md transition-colors cursor-pointer"
+            title="Adatta vista a tutto lo schermo"
+          >
+            Adatta
+          </button>
+          <button
+            type="button"
             onClick={() => zoomIn()}
-            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
             title="Zoom in"
           >
             <ZoomIn className="w-4 h-4" />
@@ -536,7 +611,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
                 document.exitFullscreen().catch(() => {});
               }
             }}
-            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
             title="Schermo intero"
           >
             <Maximize2 className="w-4 h-4" />

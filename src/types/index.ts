@@ -76,12 +76,22 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export interface PendingAction {
+  id: string;
+  type: 'DELETE_ITEM' | 'UPDATE_ITEM' | 'DELETE_PHASE';
+  targetId: string;
+  targetTitle: string;
+  payload?: any;
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED';
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
   actionSummary?: string;
+  pendingAction?: PendingAction;
 }
 
 export interface FilterState {

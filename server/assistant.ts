@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { db } from './store.ts';
+import { PendingAction } from '../src/types/index.ts';
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -9,6 +10,9 @@ const ai = new GoogleGenAI({
     }
   }
 });
+
+// Stored pending actions per user awaiting confirmation
+const pendingActionsByUser = new Map<string, PendingAction>();
 
 // Function Declarations per Gemini Function Calling
 const searchItemsDeclaration: FunctionDeclaration = {
@@ -129,6 +133,41 @@ const createPhaseDeclaration: FunctionDeclaration = {
   }
 };
 
+const updateItemDeclaration: FunctionDeclaration = {
+  name: 'update_item',
+  description: 'Modifica o rinomina un Tool, un\'Idea o un\'Esigenza esistente. Richiede ID o titolo dell\'elemento e conferma preventiva.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      itemId: { type: Type.STRING, description: 'ID o titolo dell\'elemento da modificare' },
+      title: { type: Type.STRING, description: 'Nuovo titolo' },
+      summary: { type: Type.STRING, description: 'Nuova sintesi breve' },
+      description: { type: Type.STRING, description: 'Nuova descrizione completa' },
+      generalizationRequired: { type: Type.BOOLEAN, description: 'Flag Da generalizzare' },
+      phaseIds: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+        description: 'Nuove fasi coperte'
+      },
+      confirmed: { type: Type.BOOLEAN, description: 'Se la modifica è già stata confermata esplicitamente dall\'utente' }
+    },
+    required: ['itemId']
+  }
+};
+
+const deleteItemDeclaration: FunctionDeclaration = {
+  name: 'delete_item',
+  description: 'Elimina un Tool, Idea o Esigenza dal grafo e dal database. Richiede conferma preventiva.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      itemId: { type: Type.STRING, description: 'ID o titolo dell\'elemento da eliminare' },
+      confirmed: { type: Type.BOOLEAN, description: 'Se l\'eliminazione è già stata confermata dall\'utente' }
+    },
+    required: ['itemId']
+  }
+};
+
 const toolsList = [
   searchItemsDeclaration,
   listPhasesDeclaration,
@@ -136,17 +175,17 @@ const toolsList = [
   createToolDeclaration,
   createIdeaDeclaration,
   createNeedDeclaration,
-  createPhaseDeclaration
+  createPhaseDeclaration,
+  updateItemDeclaration,
+  deleteItemDeclaration
 ];
 
 function resolvePhaseId(input: string): string {
   const phases = db.getPhases();
   const lower = (input || '').toLowerCase();
-  // Direct match
   const direct = phases.find(p => p.id === input);
   if (direct) return direct.id;
 
-  // By title substring or number
   const match = phases.find(p =>
     p.title.toLowerCase().includes(lower) ||
     lower.includes(p.title.toLowerCase()) ||
@@ -157,7 +196,25 @@ function resolvePhaseId(input: string): string {
   return phases[0]?.id || 'phase-1';
 }
 
-function executeTool(name: string, args: any, user: string) {
+function findItemByQuery(query: string) {
+  const items = db.getItems();
+  const q = query.trim().toLowerCase();
+  // 1. Exact ID
+  const byId = items.find(i => i.id === query);
+  if (byId) return byId;
+
+  // 2. Exact Title
+  const exactTitle = items.find(i => i.title.toLowerCase() === q);
+  if (exactTitle) return exactTitle;
+
+  // 3. Substring in Title
+  const subTitle = items.find(i => i.title.toLowerCase().includes(q) || q.includes(i.title.toLowerCase()));
+  if (subTitle) return subTitle;
+
+  return null;
+}
+
+function executeTool(name: string, args: any, user: string): any {
   switch (name) {
     case 'search_items': {
       const items = db.getItems({ search: args.query, type: args.type });
@@ -265,20 +322,181 @@ function executeTool(name: string, args: any, user: string) {
         message: `Fase "${created.title}" inserita alla posizione ${created.position}.`
       };
     }
+    case 'update_item': {
+      const item = findItemByQuery(args.itemId);
+      if (!item) return { error: `Elemento non trovato per "${args.itemId}"` };
+
+      const updates: any = {};
+      if (args.title) updates.title = args.title;
+      if (args.summary) updates.summary = args.summary;
+      if (args.description) updates.description = args.description;
+      if (typeof args.generalizationRequired === 'boolean') updates.generalizationRequired = args.generalizationRequired;
+      if (Array.isArray(args.phaseIds)) {
+        updates.phaseIds = args.phaseIds.map((pid: string) => resolvePhaseId(pid));
+      }
+
+      if (!args.confirmed) {
+        const pending: PendingAction = {
+          id: `act-${Date.now()}`,
+          type: 'UPDATE_ITEM',
+          targetId: item.id,
+          targetTitle: item.title,
+          payload: updates,
+          status: 'PENDING'
+        };
+        pendingActionsByUser.set(user, pending);
+        return {
+          requiresConfirmation: true,
+          pendingAction: pending,
+          message: `Confermi la modifica di "${item.title}"?`
+        };
+      }
+
+      const updated = db.updateItem(item.id, updates, user);
+      pendingActionsByUser.delete(user);
+      return {
+        success: true,
+        updatedItem: updated,
+        message: `Elemento "${item.title}" aggiornato.`
+      };
+    }
+    case 'delete_item': {
+      const item = findItemByQuery(args.itemId);
+      if (!item) return { error: `Elemento non trovato per "${args.itemId}"` };
+
+      if (!args.confirmed) {
+        // Stage pending action
+        const pending: PendingAction = {
+          id: `act-${Date.now()}`,
+          type: 'DELETE_ITEM',
+          targetId: item.id,
+          targetTitle: item.title,
+          status: 'PENDING'
+        };
+        pendingActionsByUser.set(user, pending);
+        return {
+          requiresConfirmation: true,
+          pendingAction: pending,
+          message: `Confermi l'eliminazione di "${item.title}"?`
+        };
+      }
+
+      db.deleteItem(item.id, user);
+      pendingActionsByUser.delete(user);
+      return {
+        success: true,
+        message: `Elemento "${item.title}" eliminato con successo dal grafo.`
+      };
+    }
     default:
       return { error: `Tool sconosciuto: ${name}` };
   }
 }
 
 // Fallback logic when GEMINI_API_KEY is absent or in local dev without network
-function executeLocalIntents(prompt: string, user: string) {
-  const p = prompt.toLowerCase();
+function executeLocalIntents(prompt: string, user: string, confirmedAction?: PendingAction, cancelAction?: boolean) {
+  const p = prompt.toLowerCase().trim();
   const allPhases = db.getPhases();
   const allItems = db.getItems();
 
-  // 1. Aggiungi esigenza
+  // 0. Handle cancellation
+  if (cancelAction || p === 'annulla' || p === 'no' || p === 'lascia stare' || p === 'interrompi') {
+    const pending = pendingActionsByUser.get(user);
+    pendingActionsByUser.delete(user);
+    if (pending) {
+      return {
+        reply: `Operazione annullata. **"${pending.targetTitle}"** non è stato eliminato. Nessuna modifica è stata apportata alla mappa.`,
+        pendingAction: { ...pending, status: 'CANCELLED' as const }
+      };
+    }
+    return {
+      reply: 'Nessuna operazione in sospeso da annullare.'
+    };
+  }
+
+  // 1. Handle confirmation
+  if (confirmedAction || p === 'conferma' || p === 'sì' || p === 'si' || p === 'confermo' || p === 'procedi' || p === 'elimina') {
+    const actionToExec = confirmedAction || pendingActionsByUser.get(user);
+    if (actionToExec && actionToExec.type === 'DELETE_ITEM') {
+      const deleted = db.deleteItem(actionToExec.targetId, user);
+      pendingActionsByUser.delete(user);
+      if (deleted) {
+        return {
+          reply: `✓ L'elemento **"${actionToExec.targetTitle}"** è stato **eliminato definitivamente** dal grafo e dal database.`,
+          actionSummary: `Eliminato: "${actionToExec.targetTitle}"`,
+          pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
+        };
+      } else {
+        return {
+          reply: `Non è stato possibile eliminare l'elemento (potrebbe essere già stato rimosso).`
+        };
+      }
+    }
+    if (actionToExec && actionToExec.type === 'UPDATE_ITEM') {
+      const updated = db.updateItem(actionToExec.targetId, actionToExec.payload || {}, user);
+      pendingActionsByUser.delete(user);
+      return {
+        reply: `✓ L'elemento **"${actionToExec.targetTitle}"** è stato aggiornato con successo.`,
+        actionSummary: `Aggiornato: "${actionToExec.targetTitle}"`,
+        pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
+      };
+    }
+  }
+
+  // 2. Intent: Cancella / Elimina elemento (e.g. "cancellami xxx", "elimina il tool Document AI", "cancella esigenza xxx")
+  const deleteRegex = /^(?:cancellami|cancella|elimina|rimuovi|delete)\s+(?:l'esigenza|il tool|l'idea|la fase|l'elemento)?\s*(.+)/i;
+  const deleteMatch = prompt.match(deleteRegex);
+  if (deleteMatch && deleteMatch[1]) {
+    const rawTarget = deleteMatch[1].replace(/["']/g, '').trim();
+    const item = findItemByQuery(rawTarget);
+    if (item) {
+      const pending: PendingAction = {
+        id: `act-${Date.now()}`,
+        type: 'DELETE_ITEM',
+        targetId: item.id,
+        targetTitle: item.title,
+        status: 'PENDING'
+      };
+      pendingActionsByUser.set(user, pending);
+
+      const typeLabel = item.type === 'TOOL' ? 'Tool' : item.type === 'IDEA' ? 'Idea' : 'Esigenza';
+      return {
+        reply: `⚠️ **Richiesta di eliminazione**\n\nSei sicuro di voler eliminare **"${item.title}"** (${typeLabel})?\n\nQuesta operazione cancellerà definitivamente il nodo e tutte le sue connessioni dal grafo. Clicca sul pulsante qui sotto per confermare o annullare:`,
+        pendingAction: pending
+      };
+    }
+
+    return {
+      reply: `Non ho trovato nessun elemento corrispondente a **"${rawTarget}"**. Verifica il nome o cerca tra gli elementi della mappa.`
+    };
+  }
+
+  // 3. Intent: Modifica elemento (e.g. "modifica xxx: nuova descrizione...", "rinomina xxx in yyy")
+  const renameRegex = /(?:rinomina|modifica titolo di)\s+["']?([^"']+)["']?\s+in\s+["']?([^"']+)["']?/i;
+  const renameMatch = prompt.match(renameRegex);
+  if (renameMatch && renameMatch[1] && renameMatch[2]) {
+    const targetName = renameMatch[1].trim();
+    const newTitle = renameMatch[2].trim();
+    const item = findItemByQuery(targetName);
+    if (item) {
+      const pending: PendingAction = {
+        id: `act-${Date.now()}`,
+        type: 'UPDATE_ITEM',
+        targetId: item.id,
+        targetTitle: item.title,
+        payload: { title: newTitle },
+        status: 'PENDING'
+      };
+      pendingActionsByUser.set(user, pending);
+      return {
+        reply: `⚠️ **Richiesta di modifica**\n\nVuoi confermare la ridenominazione di **"${item.title}"** in **"${newTitle}"**?`,
+        pendingAction: pending
+      };
+    }
+  }
+
+  // 4. Intent: Aggiungi esigenza
   if (p.includes('aggiungi un\'esigenza') || p.includes('aggiungi esigenza') || p.includes('nuova esigenza')) {
-    // Determina la fase
     let targetPhase = allPhases.find(ph => p.includes(ph.title.toLowerCase()) || p.includes(ph.id));
     if (!targetPhase) {
       if (p.includes('readiness') || p.includes('provisioning')) targetPhase = allPhases.find(ph => ph.id === 'phase-3');
@@ -288,7 +506,6 @@ function executeLocalIntents(prompt: string, user: string) {
       else targetPhase = allPhases[1];
     }
 
-    // Estrai titolo
     let title = 'Nuova Esigenza Operativa';
     const colonMatch = prompt.split(/:\s*/);
     if (colonMatch.length > 1) {
@@ -313,7 +530,7 @@ function executeLocalIntents(prompt: string, user: string) {
     };
   }
 
-  // 2. Aggiungi idea
+  // 5. Intent: Aggiungi idea
   if (p.includes('aggiungi come idea') || p.includes('aggiungi idea') || p.includes('nuova idea')) {
     let targetPhases = allPhases.filter(ph => p.includes(ph.title.toLowerCase()) || p.includes(ph.id));
     if (targetPhases.length === 0) {
@@ -347,7 +564,7 @@ function executeLocalIntents(prompt: string, user: string) {
     };
   }
 
-  // 3. Aggiungi fase
+  // 6. Intent: Aggiungi fase
   if (p.includes('aggiungi fase') || p.includes('inserisci una fase') || p.includes('nuova fase')) {
     let title = 'Discovery Cliente';
     if (p.includes('discovery')) title = 'Discovery Cliente';
@@ -356,7 +573,7 @@ function executeLocalIntents(prompt: string, user: string) {
       if (m && m[1]) title = m[1].trim();
     }
 
-    let targetIdx = 1; // Prima di assessment per default
+    let targetIdx = 1;
     if (p.includes('prima di assessment')) {
       const assess = allPhases.find(ph => ph.id === 'phase-1');
       targetIdx = assess ? assess.position : 1;
@@ -376,7 +593,7 @@ function executeLocalIntents(prompt: string, user: string) {
     };
   }
 
-  // 4. Domande sui Tool di una fase
+  // 7. Domande sui Tool di una fase
   if (p.includes('che tool abbiamo') || p.includes('quali tool') || p.includes('tool per')) {
     const matchedPhase = allPhases.find(ph => p.includes(ph.title.toLowerCase()) || p.includes(ph.id));
     if (matchedPhase) {
@@ -393,7 +610,7 @@ function executeLocalIntents(prompt: string, user: string) {
     }
   }
 
-  // 5. Tool da generalizzare
+  // 8. Tool da generalizzare
   if (p.includes('generalizzare') || p.includes('da generalizzare')) {
     const generalizeTools = allItems.filter(i => i.type === 'TOOL' && i.generalizationRequired);
     const list = generalizeTools.map((t, i) => `${i + 1}. **${t.title}** (Copre: ${t.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')}) - Owner: ${t.owner || 'N/A'}`).join('\n');
@@ -402,7 +619,7 @@ function executeLocalIntents(prompt: string, user: string) {
     };
   }
 
-  // 6. Tool multi-fase
+  // 9. Tool multi-fase
   if (p.includes('più fasi') || p.includes('multifase') || p.includes('trasversal')) {
     const multi = allItems.filter(i => i.type === 'TOOL' && i.phaseIds.length > 1);
     const list = multi.map(t => `- **${t.title}**: copre **${t.phaseIds.length} fasi** (${t.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')})`).join('\n');
@@ -411,7 +628,7 @@ function executeLocalIntents(prompt: string, user: string) {
     };
   }
 
-  // 7. Esigenze scoperte o aperte
+  // 10. Esigenze scoperte o aperte
   if (p.includes('esigenze') || p.includes('gap')) {
     const needs = allItems.filter(i => i.type === 'NEED');
     const list = needs.slice(0, 5).map(n => `- **${n.title}** (${n.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')}): ${n.summary || n.description}`).join('\n');
@@ -420,20 +637,57 @@ function executeLocalIntents(prompt: string, user: string) {
     };
   }
 
-  // Risposta informativa di default
+  // Risposta standard
   return {
     reply: `Sono il **T&A Assistant**. Conosco l'intero processo end-to-end (${allPhases.length} fasi), i tool esistenti, le idee e le esigenze operative.
+
 Puoi chiedermi di:
 - *"Che tool abbiamo per Assessment?"*
 - *"Quali tool coprono più fasi?"*
 - *"Quali tool devono essere generalizzati?"*
-- *"Aggiungi un'esigenza alla fase Readiness: Generazione automatica Terraform"*
-- *"Aggiungi come idea un MCP per Kubernetes"*
-- *"Inserisci una fase Discovery Cliente prima di Assessment"*`
+- *"Aggiungi un'esigenza a Readiness: Terraform automatizzato"*
+- *"Cancellami [nome elemento]"* (con conferma guidata)
+- *"Rinomina [elemento] in [nuovo nome]"* (con conferma)`
   };
 }
 
-export async function handleAssistantChat(userMessage: string, user: string = 'local.user'): Promise<{ reply: string; actionSummary?: string }> {
+export async function handleAssistantChat(
+  userMessage: string,
+  user: string = 'local.user',
+  confirmedAction?: PendingAction,
+  cancelAction?: boolean
+): Promise<{ reply: string; actionSummary?: string; pendingAction?: PendingAction }> {
+  // If user is directly confirming or cancelling an action
+  if (confirmedAction || cancelAction) {
+    return executeLocalIntents(userMessage, user, confirmedAction, cancelAction);
+  }
+
+  // Check if message is a confirmation or cancellation of a stored pending action
+  const pending = pendingActionsByUser.get(user);
+  if (pending && (
+    userMessage.toLowerCase().trim() === 'sì' ||
+    userMessage.toLowerCase().trim() === 'si' ||
+    userMessage.toLowerCase().trim() === 'conferma' ||
+    userMessage.toLowerCase().trim() === 'procedi' ||
+    userMessage.toLowerCase().trim() === 'elimina' ||
+    userMessage.toLowerCase().trim() === 'annulla' ||
+    userMessage.toLowerCase().trim() === 'no'
+  )) {
+    return executeLocalIntents(userMessage, user, confirmedAction, cancelAction);
+  }
+
+  // If message contains explicit delete or rename intent, handle with confirmation prompt immediately
+  const p = userMessage.toLowerCase().trim();
+  if (
+    p.startsWith('cancellami') ||
+    p.startsWith('cancella') ||
+    p.startsWith('elimina') ||
+    p.startsWith('rimuovi') ||
+    p.startsWith('rinomina')
+  ) {
+    return executeLocalIntents(userMessage, user);
+  }
+
   // If GEMINI_API_KEY is available, invoke Gemini 3.8 Flash with tools
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10) {
     try {
@@ -441,10 +695,9 @@ export async function handleAssistantChat(userMessage: string, user: string = 'l
       const allItems = db.getItems();
       const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
 L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
-Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, creare nuovi tool, nuove idee, nuove esigenze e nuove fasi.
-Rispondi sempre in modo chiaro, autorevole, professionale e conciso in lingua italiana.
-Quando l'utente ti chiede di creare o aggiungere un tool, un'idea, un'esigenza o una fase, USA SEMPRE i tools forniti per effettuare l'operazione sul database.
-Non inventare mai ID casuali: usa gli ID o i nomi reali delle fasi (es. ${allPhases.map(p => `${p.position}: ${p.title} [${p.id}]`).join(', ')}).
+Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, creare, modificare ed eliminare tool, idee ed esigenze.
+Quando l'utente chiede di eliminare o modificare un elemento, USA delete_item o update_item. Per l'eliminazione, richiedi SEMPRE conferma preventiva all'utente prima di cancellare definitivamente.
+Rispondi in modo professionale, conciso e in lingua italiana.
 Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze).`;
 
       const response = await ai.models.generateContent({
@@ -456,10 +709,10 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
         }
       });
 
-      // Handle function calls
       const functionCalls = response.functionCalls;
       if (functionCalls && functionCalls.length > 0) {
         let actionSummary = '';
+        let pendingActionToReturn: PendingAction | undefined;
         const toolResponses = [];
 
         for (const call of functionCalls) {
@@ -469,9 +722,11 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
           if (result && (result as any).message) {
             actionSummary = (result as any).message;
           }
+          if (result && (result as any).pendingAction) {
+            pendingActionToReturn = (result as any).pendingAction;
+          }
         }
 
-        // Second turn to generate conversational response acknowledging the tool output
         const followUp = await ai.models.generateContent({
           model: 'gemini-3.8-flash',
           contents: [
@@ -484,7 +739,7 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
             },
             {
               role: 'user',
-              parts: [{ text: `Risultati dell'esecuzione:\n${JSON.stringify(toolResponses, null, 2)}\nSpiega all'utente cosa è stato fatto.` }]
+              parts: [{ text: `Risultati dell'esecuzione:\n${JSON.stringify(toolResponses, null, 2)}\nSpiega all'utente il risultato o chiedi conferma se richiesta.` }]
             }
           ],
           config: {
@@ -493,8 +748,9 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
         });
 
         return {
-          reply: followUp.text || 'Operazione completata con successo.',
-          actionSummary
+          reply: followUp.text || 'Operazione elaborata.',
+          actionSummary,
+          pendingAction: pendingActionToReturn
         };
       }
 
@@ -502,14 +758,10 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
         reply: response.text || 'Ho elaborato la tua richiesta.'
       };
     } catch (err) {
-      console.warn('Gemini API call failed, falling back to deterministic intent engine:', err);
+      console.warn('Gemini API call error, using deterministic engine:', err);
     }
   }
 
-  // Deterministic engine fallback
-  const result = executeLocalIntents(userMessage, user);
-  return {
-    reply: result.reply,
-    actionSummary: result.actionSummary
-  };
+  // Deterministic fallback
+  return executeLocalIntents(userMessage, user);
 }

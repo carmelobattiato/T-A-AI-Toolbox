@@ -181,13 +181,18 @@ app.get('/api/audit-logs', (_req: Request, res: Response) => {
 // 5. Chatbot Assistant
 app.post('/api/chat', async (req: Request, res: Response) => {
   try {
-    const { message } = req.body;
-    if (!message || typeof message !== 'string') {
-      res.status(400).json({ error: 'Il campo message è obbligatorio' });
+    const { message, confirmedAction, cancelAction } = req.body;
+    if (!message && !confirmedAction && !cancelAction) {
+      res.status(400).json({ error: 'Messaggio o azione richiesta mancante' });
       return;
     }
     const user = getUser(req);
-    const result = await handleAssistantChat(message, user);
+    const result = await handleAssistantChat(
+      message || '',
+      user,
+      confirmedAction,
+      Boolean(cancelAction)
+    );
     res.json(result);
   } catch (err: any) {
     console.error('Chat error:', err);
@@ -199,8 +204,12 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 async function startServer() {
   if (!isProduction) {
     const { createServer } = await import('vite');
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : undefined,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
