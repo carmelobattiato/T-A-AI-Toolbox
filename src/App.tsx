@@ -338,6 +338,7 @@ export default function App() {
               filters={filters}
               focusedPhaseId={focusedPhaseId}
               focusedItemId={focusedItemId}
+              isDrawerOpen={Boolean(selectedPhase || selectedItem)}
               onSelectPhase={handleSelectPhase}
               onSelectItem={handleSelectItem}
               onClearFocus={handleClearFocus}
@@ -426,7 +427,10 @@ export default function App() {
       </div>
 
       {/* T&A Assistant Chatbot (Floating Bottom Right) */}
-      <TAIAssistant onRefreshData={() => loadData(true)} />
+      <TAIAssistant
+        onRefreshData={() => loadData(true)}
+        isDrawerOpen={Boolean(selectedPhase || selectedItem)}
+      />
 
       {/* Tool Modal Form */}
       <ToolForm

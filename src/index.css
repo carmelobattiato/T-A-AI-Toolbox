@@ -49,3 +49,25 @@
 .flow-edge-transition path {
   transition: stroke-opacity 0.3s ease, stroke-width 0.2s ease, stroke 0.2s ease;
 }
+
+/* MiniMap integration inside Panoramica card */
+.react-flow__minimap {
+  position: relative !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border-radius: 10px !important;
+}
+
+.react-flow__minimap-svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 10px !important;
+}
+
+.react-flow__minimap-mask {
+  fill: rgba(241, 245, 249, 0.7) !important;
+  stroke: rgba(161, 0, 255, 0.7) !important;
+  stroke-width: 1.5px !important;
+  border-radius: 6px !important;
+}
