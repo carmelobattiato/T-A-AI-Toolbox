@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+:root {
+  --accent-purple: #7928ca;
+  --accenture-purple: #a100ff;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* React Flow custom styling overrides */
+.react-flow__background {
+  background-color: #fafbfd;
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #94a3b8;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.3);
+  background: #6366f1;
+}
+
+/* Smooth transitions for focus states */
+.flow-node-transition {
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease;
+}
+
+.flow-edge-transition path {
+  transition: stroke-opacity 0.3s ease, stroke-width 0.2s ease, stroke 0.2s ease;
+}

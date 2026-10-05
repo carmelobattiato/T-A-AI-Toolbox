@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ta-ai-toolbox-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://toolbox_user:toolbox_pass@postgres:5432/ta_toolbox?schema=public
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gemini-3.8-flash}
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ta-ai-toolbox-db
+    environment:
+      - POSTGRES_USER=toolbox_user
+      - POSTGRES_PASSWORD=toolbox_pass
+      - POSTGRES_DB=ta_toolbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  app_data:
+  postgres_data:
