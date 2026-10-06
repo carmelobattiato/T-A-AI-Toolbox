@@ -1,0 +1,397 @@
+# T&A AI Toolbox — manifest Kubernetes (template)
+#
+# Generare il manifest reale sostituendo i segnaposto, ad esempio:
+#
+#   sed -e 's|<NAMESPACE>|taai-toolbox|g' \
+#       -e 's|<IMAGE_REGISTRY>|registry.example.com/my-team|g' \
+#       -e 's|<BACKEND_TAG>|1.0.0|g' \
+#       -e 's|<FRONTEND_TAG>|1.0.0|g' \
+#       -e 's|<STORAGE_CLASS>|standard-rwo|g' \
+#       -e 's|<INGRESS_NAMESPACE>|ingress|g' \
+#       -e 's|<INGRESS_APP_NAME>|ingress-proxy|g' \
+#       k8s/manifests.template.yaml > k8s/manifests.yaml
+#
+#   kubectl apply -f k8s/manifests.yaml
+#
+# k8s/manifests.yaml contiene i valori dell'ambiente ed è in .gitignore: non committarlo.
+#
+# Segnaposto:
+#   <NAMESPACE>          namespace dedicato all'applicazione
+#   <IMAGE_REGISTRY>     registry delle immagini, senza nome immagine
+#   <BACKEND_TAG>        tag dell'immagine taai-toolbox-backend
+#   <FRONTEND_TAG>       tag dell'immagine taai-toolbox-frontend
+#   <STORAGE_CLASS>      StorageClass ReadWriteOnce per i dati (es. standard-rwo su GKE)
+#   <INGRESS_NAMESPACE>  namespace del reverse proxy che espone l'applicazione
+#   <INGRESS_APP_NAME>   valore della label app.kubernetes.io/name dei pod del reverse proxy
+#                        (adattare il podSelector della NetworkPolicy se usa label diverse)
+#
+# Immagini:
+#   docker build -t <IMAGE_REGISTRY>/taai-toolbox-backend:<BACKEND_TAG>   -f Dockerfile.backend .
+#   docker build -t <IMAGE_REGISTRY>/taai-toolbox-frontend:<FRONTEND_TAG> -f Dockerfile.frontend .
+#   docker push  <IMAGE_REGISTRY>/taai-toolbox-backend:<BACKEND_TAG>
+#   docker push  <IMAGE_REGISTRY>/taai-toolbox-frontend:<FRONTEND_TAG>
+#
+# Reverse proxy davanti all'applicazione (l'app non ha autenticazione propria):
+#   - deve autenticare ogni richiesta (SSO, OIDC, JWT…);
+#   - deve impostare l'header x-forwarded-user con l'identità dell'utente (autore
+#     nell'audit log e owner di default) e rimuovere quello inviato dal client;
+#   - inoltra al Service `frontend` porta 80, con timeout di almeno 90 s
+#     (le risposte della chat attendono l'LLM).
+#
+# Configurazione LLM, dopo il primo avvio da web GUI → Settings AI:
+#   Provider OpenAI Compatible → base URL, modello e API key di un endpoint compatibile
+#   (OpenAI, LiteLLM, vLLM, Ollama…). In alternativa GEMINI_API_KEY nel Deployment backend.
+#
+# Vincoli del backend (stato in memoria + db.json su PVC ReadWriteOnce):
+#   - replicas: 1 e strategy Recreate — NON scalare. Due repliche divergono e
+#     si sovrascrivono db.json a vicenda; anche le conferme pendenti
+#     dell'assistente vivono in memoria nel singolo pod.
+#   - Il PVC copre il db.json incluso nell'immagine: l'initContainer `seed-data`
+#     lo copia sul volume solo al primo avvio (se db.json non esiste).
+#   - PDB minAvailable 1: senza, il cluster autoscaler può spostare il pod quando
+#     consolida i nodi (decine di secondi di disservizio, più a lungo se il disco
+#     è zonale e serve un nodo nella stessa zona).
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: <NAMESPACE>
+  labels:
+    app.kubernetes.io/part-of: taai-toolbox
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: toolbox-data
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: <STORAGE_CLASS>
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: taai-toolbox-backend
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  # Recreate: il PVC RWO non può essere montato da due pod durante un rollout
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taai-toolbox-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: taai-toolbox-backend
+        app.kubernetes.io/part-of: taai-toolbox
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000      # utente `node` dell'immagine node:alpine
+        runAsGroup: 1000
+        fsGroup: 1000        # rende il PVC scrivibile dall'utente 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: seed-data
+          image: <IMAGE_REGISTRY>/taai-toolbox-backend:<BACKEND_TAG>
+          command:
+            - sh
+            - -c
+            - |
+              if [ -f /pvc/db.json ]; then
+                echo "db.json già presente sul volume, seed saltato"
+              else
+                cp /app/data/db.json /pvc/db.json && echo "db.json iniziale copiato sul volume"
+              fi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: data
+              mountPath: /pvc
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: backend
+          image: <IMAGE_REGISTRY>/taai-toolbox-backend:<BACKEND_TAG>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "5000"
+            - name: DATA_DIR
+              value: /app/data
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            # tsx compila i .ts in una cache sotto os.tmpdir()
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: toolbox-data
+        - name: tmp
+          emptyDir: {}
+
+---
+# Il nome `backend` è vincolato: docker/nginx.conf fa proxy_pass http://backend:5000
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: taai-toolbox-backend
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: taai-toolbox-backend
+  ports:
+    - name: http
+      port: 5000
+      protocol: TCP
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: taai-toolbox-frontend
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  # 2 repliche + PDB maxUnavailable 1: il consolidamento o la manutenzione dei
+  # nodi non lascia mai la SPA senza pod
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taai-toolbox-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: taai-toolbox-frontend
+        app.kubernetes.io/part-of: taai-toolbox
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: <IMAGE_REGISTRY>/taai-toolbox-frontend:<FRONTEND_TAG>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            # nginx-unprivileged scrive pid e temp in /tmp, cache in /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+
+---
+# Upstream del reverse proxy
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: taai-toolbox-frontend
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: taai-toolbox-frontend
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+
+---
+# Backend single-replica: minAvailable 1 impedisce al cluster autoscaler di
+# sfrattarlo per consolidare i nodi. Gli upgrade dei nodi possono comunque
+# forzare lo spostamento dopo un timeout (su GKE 1h): resta possibile solo
+# durante la manutenzione.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: taai-toolbox-backend
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taai-toolbox-backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: taai-toolbox-frontend
+    app.kubernetes.io/part-of: taai-toolbox
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taai-toolbox-frontend
+
+---
+# L'app non ha autenticazione propria: l'unico ingresso ammesso è il reverse
+# proxy che autentica gli utenti. Senza queste policy qualsiasi pod del cluster
+# potrebbe chiamare /api/settings e cambiare base URL / API key del provider LLM.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-from-ingress
+  namespace: <NAMESPACE>
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: taai-toolbox-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: <INGRESS_NAMESPACE>
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: <INGRESS_APP_NAME>
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-from-frontend
+  namespace: <NAMESPACE>
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: taai-toolbox-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: taai-toolbox-frontend
+      ports:
+        - protocol: TCP
+          port: 5000

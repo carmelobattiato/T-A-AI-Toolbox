@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Manifest Kubernetes generato da k8s/manifests.template.yaml (valori dell'ambiente)
+k8s/manifests.yaml
+
+# Note locali, specifiche dell'ambiente
+*.local.md
