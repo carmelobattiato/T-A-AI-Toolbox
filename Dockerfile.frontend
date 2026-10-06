@@ -19,16 +19,17 @@ COPY src/ ./src/
 RUN npm run build
 
 # ==========================================
-# STAGE 2: Serve via Nginx
+# STAGE 2: Serve via Nginx (unprivileged: non-root, port 8080, pid/temp in /tmp)
 # ==========================================
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
 # Copy custom Nginx configuration with reverse proxy for /api/
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+# (explicit mode: COPY keeps the checkout's permissions, nginx runs non-root)
+COPY --chmod=644 docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy compiled static assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
