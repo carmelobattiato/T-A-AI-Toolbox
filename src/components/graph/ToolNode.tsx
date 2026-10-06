@@ -19,7 +19,7 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
   const coveredPhases = phases.filter(p => item.phaseIds.includes(p.id));
   const ownerInitials = item.owner
     ? item.owner.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'CB';
+    : 'TA';
 
   return (
     <div
@@ -80,7 +80,7 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
         {/* Owner Avatar / Badge */}
         <div className="absolute bottom-1 right-2 flex items-center">
           <div
-            title={`Owner: ${item.owner || 'Carmelo Battiato'}`}
+            title={`Owner: ${item.owner || 'Team T&A'}`}
             className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
           >
             {ownerInitials}

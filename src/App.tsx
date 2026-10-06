@@ -9,8 +9,9 @@ import { IdeaForm } from './components/forms/IdeaForm.tsx';
 import { NeedForm } from './components/forms/NeedForm.tsx';
 import { PhaseForm } from './components/forms/PhaseForm.tsx';
 import { AuditLogModal } from './components/modals/AuditLogModal.tsx';
+import { SettingsModal } from './components/modals/SettingsModal.tsx';
 import { TAIAssistant } from './components/chat/TAIAssistant.tsx';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
 
 export default function App() {
   const [phases, setPhases] = useState<Phase[]>([]);
@@ -48,6 +49,8 @@ export default function App() {
   const [targetPhaseIndex, setTargetPhaseIndex] = useState<number | undefined>();
 
   const [auditLogModalOpen, setAuditLogModalOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [isCustomAiActive, setIsCustomAiActive] = useState(false);
 
   // Toast Notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -56,6 +59,18 @@ export default function App() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   };
+
+  const checkSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        setIsCustomAiActive(Boolean(data.provider === 'openai' && data.hasApiKey));
+      }
+    } catch (e) {
+      console.error('Failed to check settings:', e);
+    }
+  }, []);
 
   // Fetch all data from server
   const loadData = useCallback(async (quiet = false) => {
@@ -82,7 +97,8 @@ export default function App() {
   // Initial load
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    checkSettings();
+  }, [loadData, checkSettings]);
 
   // Polling every 10 seconds for multi-user collaboration (Spec 43)
   useEffect(() => {
@@ -296,11 +312,11 @@ export default function App() {
     showToast('Allegato rimosso.');
   };
 
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+
   // Reset to initial seed
   const handleResetSeed = async () => {
-    if (confirm('Vuoi ripristinare il grafo ai dati iniziali standard T&A?')) {
-      window.location.reload();
-    }
+    setResetConfirmOpen(true);
   };
 
   const selectedPhase = phases.find(p => p.id === focusedPhaseId) || null;
@@ -319,6 +335,8 @@ export default function App() {
         }}
         onOpenAuditLog={() => setAuditLogModalOpen(true)}
         onResetSeed={handleResetSeed}
+        onOpenSettings={() => setSettingsModalOpen(true)}
+        isCustomAiActive={isCustomAiActive}
       />
 
       {/* Main Workspace Canvas Area */}
@@ -488,6 +506,51 @@ export default function App() {
         isOpen={auditLogModalOpen}
         onClose={() => setAuditLogModalOpen(false)}
       />
+
+      {/* Settings AI Modal */}
+      <SettingsModal
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        onSaved={() => {
+          checkSettings();
+          showToast('Configurazione AI salvata.');
+        }}
+      />
+
+      {/* Reset Confirmation Dialog */}
+      {resetConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs select-none">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 text-amber-600">
+              <RotateCcw className="w-5 h-5" />
+              <h3 className="font-bold text-sm text-slate-900">Ripristina dati iniziali?</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Vuoi ricaricare il grafo allo stato standard iniziale del processo T&A?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setResetConfirmOpen(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetConfirmOpen(false);
+                  loadData();
+                  showToast('Dati ricaricati.');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-colors cursor-pointer"
+              >
+                Ripristina
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Feedback */}
       {toast && (

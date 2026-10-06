@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { db } from './server/store.ts';
+import { settingsStore } from './server/settingsStore.ts';
 import { handleAssistantChat } from './server/assistant.ts';
 
 dotenv.config();
@@ -11,18 +12,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Increase payload limit for base64 screenshots/attachments (up to 10MB)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Helper to get authenticated user from SSO header or fallback
+// CORS middleware for separate frontend and backend containers
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-forwarded-user');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
+
+// Helper to get general user or SSO header
 function getUser(req: Request): string {
   const forwarded = req.headers['x-forwarded-user'] as string;
   if (forwarded && forwarded.trim()) return forwarded.trim();
-  return 'Carmelo Battiato';
+  return 'Team T&A';
 }
 
 // --- API ROUTES ---
@@ -200,15 +213,50 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   }
 });
 
+// 6. Custom OpenAI & AI Settings
+app.get('/api/settings', (_req: Request, res: Response) => {
+  try {
+    res.json(settingsStore.getClientSettings());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/settings', (req: Request, res: Response) => {
+  try {
+    const { provider, openaiBaseUrl, openaiModel, openaiApiKey } = req.body;
+    const updates: any = {};
+    if (provider) updates.provider = provider;
+    if (typeof openaiBaseUrl === 'string') updates.openaiBaseUrl = openaiBaseUrl;
+    if (typeof openaiModel === 'string') updates.openaiModel = openaiModel;
+    if (typeof openaiApiKey === 'string' && openaiApiKey !== '••••••••••••••••') {
+      updates.openaiApiKey = openaiApiKey;
+    }
+
+    settingsStore.save(updates);
+    res.json(settingsStore.getClientSettings());
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/settings/test', async (req: Request, res: Response) => {
+  try {
+    const result = await settingsStore.testOpenAi(req.body);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // --- VITE MIDDLEWARE OR STATIC SERVING ---
 async function startServer() {
   if (!isProduction) {
     const { createServer } = await import('vite');
-    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createServer({
       server: {
         middlewareMode: true,
-        hmr: isHmrDisabled ? false : undefined,
+        hmr: false,
       },
       appType: 'spa',
     });

@@ -29,7 +29,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>(
     initialData?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : ['phase-3'])
   );
-  const [owner, setOwner] = useState(initialData?.owner || 'Carmelo Battiato');
+  const [owner, setOwner] = useState(initialData?.owner || 'Team T&A');
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -191,7 +191,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
                 type="text"
                 value={owner}
                 onChange={e => setOwner(e.target.value)}
-                placeholder="es. Carmelo Battiato"
+                placeholder="es. Team T&A / Proponente"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
               />
             </div>

@@ -40,6 +40,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<'details' | 'phases' | 'screenshots' | 'notes'>('details');
   const [isUploading, setIsUploading] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const coveredPhases = phases.filter(p => item.phaseIds.includes(p.id));
   const attachments = item.attachments || [];
@@ -296,8 +297,10 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                       {(item.owner || 'CB').slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <div className="text-xs font-semibold text-slate-900">{item.owner || 'Carmelo Battiato'}</div>
-                      <div className="text-[10px] text-slate-500">carmelo.battiato@accenture.com</div>
+                      <div className="text-xs font-semibold text-slate-900">{item.owner || 'Team T&A'}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {item.owner ? `${item.owner.toLowerCase().replace(/\s+/g, '.')}@accenture.com` : 'team.ta@accenture.com'}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -484,22 +487,42 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
 
       {/* Footer Actions */}
       <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-        <button
-          type="button"
-          onClick={() => {
-            if (confirm(`Sei sicuro di voler eliminare "${item.title}"?`)) {
-              onDeleteItem(item.id);
-            }
-          }}
-          className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1.5 rounded hover:bg-red-50 transition-colors"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>Elimina</span>
-        </button>
+        {showDeleteConfirm ? (
+          <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
+            <span className="text-[11px] font-bold text-red-700">Eliminare?</span>
+            <button
+              type="button"
+              onClick={() => {
+                onDeleteItem(item.id);
+                setShowDeleteConfirm(false);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              Sì, elimina
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-xs transition-colors cursor-pointer"
+            >
+              Annulla
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1.5 rounded hover:bg-red-50 transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Elimina</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => onEditItem(item)}
-          className="text-xs font-semibold px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs flex items-center gap-1.5 transition-colors"
+          className="text-xs font-semibold px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <Edit3 className="w-3.5 h-3.5" />
           <span>Modifica elemento</span>
