@@ -29,6 +29,7 @@ export const NeedForm: React.FC<NeedFormProps> = ({
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>(
     initialData?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : ['phase-1'])
   );
+  const [owner, setOwner] = useState(initialData?.owner || 'Team T&A');
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -63,6 +64,7 @@ export const NeedForm: React.FC<NeedFormProps> = ({
         desiredTool: desiredTool.trim() || undefined,
         desiredOutcome: desiredOutcome.trim() || undefined,
         phaseIds: selectedPhaseIds,
+        owner: owner.trim() || undefined,
         notes: notes.trim() || undefined,
       });
       onClose();
@@ -195,15 +197,27 @@ export const NeedForm: React.FC<NeedFormProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Note operative</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Note o priorità del bisogno..."
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Owner / Referente</label>
+              <input
+                type="text"
+                value={owner}
+                onChange={e => setOwner(e.target.value)}
+                placeholder="es. Team T&A / Referente"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Note operative</label>
+              <input
+                type="text"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Note o priorità del bisogno..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs"
+              />
+            </div>
           </div>
 
           {/* Footer Submit */}

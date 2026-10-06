@@ -21,6 +21,10 @@ COPY src/utils/ ./src/utils/
 RUN mkdir -p /app/data
 COPY data/ /app/data/
 
+# COPY keeps the checkout's permissions: a restrictive umask would leave sources
+# unreadable for the non-root runtime user (uid 1000 on K8s)
+RUN chmod -R a+rX /app/package.json /app/package-lock.json /app/tsconfig.json /app/server /app/src /app/data
+
 # Environment configurations
 ENV PORT=5000
 ENV NODE_ENV=production
@@ -31,5 +35,6 @@ VOLUME ["/app/data"]
 
 EXPOSE 5000
 
-# Start standalone backend server
-CMD ["npx", "tsx", "server/standalone.ts"]
+# Start standalone backend server (tsx binary directly: npx needs a writable ~/.npm,
+# which is not available with readOnlyRootFilesystem on K8s)
+CMD ["node_modules/.bin/tsx", "server/standalone.ts"]

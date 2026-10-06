@@ -109,7 +109,8 @@ const createNeedDeclaration: FunctionDeclaration = {
         type: Type.ARRAY,
         items: { type: Type.STRING },
         description: 'Array di ID delle fasi'
-      }
+      },
+      owner: { type: Type.STRING, description: 'Owner / Referente dell\'esigenza' }
     },
     required: ['title', 'phaseIds']
   }
@@ -180,6 +181,36 @@ const toolsList = [
   updateItemDeclaration,
   deleteItemDeclaration
 ];
+
+// Same declarations for OpenAI-compatible endpoints: Gemini schema types are upper-case
+// enums (Type.STRING = 'STRING'), OpenAI tools expect lower-case JSON Schema types.
+// The `confirmed` flag is not exposed: on this path updates and deletions always go
+// through the confirmation card.
+function toJsonSchema(schema: any): any {
+  const out: any = { ...schema };
+  if (typeof schema.type === 'string') out.type = schema.type.toLowerCase();
+  if (schema.items) out.items = toJsonSchema(schema.items);
+  if (schema.properties) {
+    out.properties = Object.fromEntries(
+      Object.entries(schema.properties)
+        .filter(([name]) => name !== 'confirmed')
+        .map(([name, prop]) => [name, toJsonSchema(prop)])
+    );
+  }
+  return out;
+}
+
+const openAiTools = toolsList.map(decl => ({
+  type: 'function',
+  function: {
+    name: decl.name,
+    description: decl.description,
+    parameters: toJsonSchema(decl.parameters),
+  },
+}));
+
+// Max model ↔ tool round trips per message (e.g. search_items, then update_item)
+const MAX_TOOL_ROUNDS = 5;
 
 function resolvePhaseId(input: string): string {
   const phases = db.getPhases();
@@ -303,6 +334,7 @@ function executeTool(name: string, args: any, user: string): any {
         desiredTool: args.desiredTool,
         desiredOutcome: args.desiredOutcome,
         phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : ['phase-1'],
+        owner: args.owner || user,
       }, user);
       return {
         success: true,
@@ -692,41 +724,96 @@ export async function handleAssistantChat(
 
   const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
 L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
+Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, creare tool, idee, esigenze e fasi, modificare ed eliminare elementi.
+Per creare, modificare o eliminare qualcosa DEVI chiamare la funzione corrispondente: non dichiarare mai di aver eseguito un'operazione senza averla chiamata.
+Modifiche ed eliminazioni non sono immediate: il sistema mostra all'utente una card di conferma. In quel caso di' all'utente di confermare dalla card, non che l'operazione è completata.
+Nei parametri phaseIds usa gli ID delle fasi (es. "phase-1").
 Rispondi in modo professionale, conciso e in lingua italiana, utilizzando formattazione markdown (elenchi puntati, **grassetto**, ecc.).
-Puoi suggerire la creazione di tool, idee ed esigenze. Per qualsiasi eliminazione o modifica, chiedi sempre conferma preventiva all'utente prima di procedere.
 Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze) e ${allPhases.length} fasi.
 Fasi di processo:
 ${allPhases.map(p => `- ${p.id} (pos ${p.position}): ${p.title} - ${p.description}`).join('\n')}
 Elementi attuali:
 ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds.join(', ')}): ${i.summary || i.description?.substring(0, 100)}`).join('\n')}`;
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.openaiApiKey.trim()}`,
-    },
-    body: JSON.stringify({
-      model: settings.openaiModel || 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: userMessage }
-      ],
-      temperature: 0.3,
-    }),
-  });
+  const messages: any[] = [
+    { role: 'system', content: systemInstruction },
+    { role: 'user', content: userMessage }
+  ];
+  const actionSummaries: string[] = [];
+  let pendingAction: PendingAction | undefined;
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    console.error('Custom OpenAI API error:', res.status, errorText);
-    throw new Error(`Errore API OpenAI custom (${res.status}): ${errorText.substring(0, 100)}`);
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.openaiApiKey.trim()}`,
+      },
+      body: JSON.stringify({
+        model: settings.openaiModel || 'gpt-4o-mini',
+        messages,
+        tools: openAiTools,
+        // Last round: force a text answer (tools stay declared, Anthropic rejects
+        // tool results in the history without tool definitions)
+        tool_choice: isLastRound ? 'none' : 'auto',
+        // No temperature: some models reject anything but their default
+        // (e.g. claude-opus-5-5 via LiteLLM accepts only temperature=1)
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Custom OpenAI API error:', res.status, errorText);
+      // Tools already executed: report them instead of falling back to another
+      // engine, which could run the same action twice
+      if (actionSummaries.length > 0 || pendingAction) {
+        return {
+          reply: 'Ho eseguito le operazioni richieste, ma il modello non ha completato la risposta.',
+          actionSummary: actionSummaries.join(' · ') || undefined,
+          pendingAction
+        };
+      }
+      throw new Error(`Errore API OpenAI custom (${res.status}): ${errorText.substring(0, 100)}`);
+    }
+
+    const data = await res.json();
+    const message = data.choices?.[0]?.message;
+    const toolCalls = message?.tool_calls;
+
+    if (!toolCalls || toolCalls.length === 0) {
+      return {
+        reply: message?.content || 'Nessuna risposta dal modello custom.',
+        actionSummary: actionSummaries.join(' · ') || undefined,
+        pendingAction
+      };
+    }
+
+    // Send the assistant message back unchanged: with Gemini 3 behind LiteLLM it
+    // carries the thought signature required by the follow-up request
+    messages.push(message);
+
+    for (const call of toolCalls) {
+      let result: any;
+      try {
+        const args = JSON.parse(call.function?.arguments || '{}');
+        // The model can never confirm on the user's behalf
+        delete args.confirmed;
+        result = executeTool(call.function?.name, args, user);
+      } catch (err: any) {
+        result = { error: err.message || 'Errore durante l\'esecuzione della funzione' };
+      }
+      if (result?.success && result.message) actionSummaries.push(result.message);
+      if (result?.pendingAction) pendingAction = result.pendingAction;
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    }
   }
 
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content || '';
-
+  // Only reached if the model ignores tool_choice 'none' on the last round
   return {
-    reply: text || 'Nessuna risposta dal modello custom.',
+    reply: 'Nessuna risposta dal modello custom.',
+    actionSummary: actionSummaries.join(' · ') || undefined,
+    pendingAction
   };
 }
 
@@ -749,7 +836,12 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
       const openAiResult = await handleOpenAIChat(userMessage, user, aiSettings);
       if (openAiResult) return openAiResult;
     } catch (err: any) {
-      console.warn('Custom OpenAI execution error, attempting Gemini/local fallback:', err.message);
+      // No fallback: the keyword engine below would write wrong data to the graph
+      // (e.g. an idea titled with the whole sentence) when the provider is down
+      console.warn('Custom OpenAI execution error:', err.message);
+      return {
+        reply: `⚠️ Il provider AI configurato non ha risposto correttamente, quindi **nessuna modifica è stata apportata alla mappa**.\n\nDettaglio: \`${err.message}\`\n\nRiprova tra poco o verifica la configurazione in **Settings AI**.`
+      };
     }
   }
 

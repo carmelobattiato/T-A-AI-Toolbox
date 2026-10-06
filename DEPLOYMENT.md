@@ -45,16 +45,19 @@ Questa guida descrive come eseguire **T&A AI Toolbox** come applicazione distrib
 ## 2. Avvio Rapido
 
 Rendi eseguibili gli script bash:
+
 ```bash
 chmod +x start.sh stop.sh build-containers.sh backup-db.sh
 ```
 
 ### Avvio con uno script:
+
 ```bash
 ./start.sh
 ```
 
 Oppure direttamente con Docker Compose:
+
 ```bash
 docker compose up -d --build
 ```
@@ -103,3 +106,37 @@ oppure:
 ```bash
 docker compose down
 ```
+
+---
+
+## 6. Deploy su Kubernetes
+
+Template in [`k8s/manifests.template.yaml`](k8s/manifests.template.yaml): namespace dedicato, PVC per `db.json`/`settings.json`, Deployment + Service `backend` e `frontend`, PodDisruptionBudget, NetworkPolicy. Il manifest reale si genera sostituendo i segnaposto (istruzioni ed esempio `sed` nell'intestazione del template) e **non va committato**: `k8s/manifests.yaml` è in `.gitignore`.
+
+```bash
+REG=registry.example.com/my-team
+docker build -t $REG/taai-toolbox-backend:1.0.0  -f Dockerfile.backend .
+docker build -t $REG/taai-toolbox-frontend:1.0.0 -f Dockerfile.frontend .
+docker push $REG/taai-toolbox-backend:1.0.0
+docker push $REG/taai-toolbox-frontend:1.0.0
+
+# genera k8s/manifests.yaml dal template (vedi intestazione), poi:
+kubectl apply -f k8s/manifests.yaml
+```
+
+**Reverse proxy.** L'applicazione non ha autenticazione propria e va esposta solo dietro un reverse proxy che:
+
+* autentichi ogni richiesta (SSO, OIDC, JWT…);
+* imposti l'header `x-forwarded-user` con l'identità dell'utente (autore nell'audit log e owner di default degli elementi creati da chat) e rimuova quello eventualmente inviato dal client;
+* inoltri al Service `frontend` (porta 80) con timeout di almeno 90 s, perché le risposte della chat attendono l'LLM.
+
+La NetworkPolicy `frontend-from-ingress` ammette traffico verso il frontend solo dai pod del reverse proxy (segnaposto `<INGRESS_NAMESPACE>` e `<INGRESS_APP_NAME>`); `backend-from-frontend` ammette verso il backend solo il frontend.
+
+**Configurazione LLM.** Dopo il primo avvio, da **Settings AI**: provider `OpenAI Compatible` con base URL, modello e API key di un endpoint compatibile (OpenAI, LiteLLM, vLLM, Ollama…). Se l'endpoint gira nello stesso cluster conviene usare l'indirizzo interno del suo Service (`http://<service>.<namespace>.svc.cluster.local:<porta>`). In alternativa, `GEMINI_API_KEY` nel Deployment backend per usare Gemini nativo.
+
+Vincoli:
+
+* **Backend a una sola replica** (`strategy: Recreate`): i dati vivono in memoria e vengono riscritti su `db.json` a ogni modifica. Due repliche divergerebbero e si sovrascriverebbero il file. Ogni rilascio del backend comporta qualche decina di secondi di API non disponibili.
+* **Seed iniziale**: il PVC copre il `data/db.json` dell'immagine; l'initContainer `seed-data` lo copia sul volume solo se `db.json` non esiste.
+* **PodDisruptionBudget**: `minAvailable: 1` sul backend evita che il cluster autoscaler lo sposti per consolidare i nodi; il frontend ha 2 repliche e `maxUnavailable: 1`.
+* **Assistente con provider OpenAI-compatibile**: usa le stesse funzioni del ramo Gemini (ricerca, creazione di tool/idee/esigenze/fasi, modifica, eliminazione) in formato `tools` OpenAI. Modifiche ed eliminazioni passano sempre dalla card di conferma: il modello non può confermare al posto dell'utente.

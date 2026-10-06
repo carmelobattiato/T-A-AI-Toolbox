@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Item, Phase } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
+import { getOwnerInitials } from '../../utils/owner.ts';
 
 interface NeedNodeData {
   item: Item;
@@ -66,6 +67,16 @@ export const NeedNode: React.FC<{ data: NeedNodeData }> = ({ data }) => {
         <div className="text-[11px] font-medium text-slate-800 leading-tight line-clamp-3 px-1 max-w-[95px]">
           {item.title}
         </div>
+
+        {/* Owner Avatar / Badge (same as ToolNode) */}
+        <div className="absolute bottom-1 right-2 flex items-center">
+          <div
+            title={`Owner: ${item.owner || 'Team T&A'}`}
+            className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
+          >
+            {getOwnerInitials(item.owner)}
+          </div>
+        </div>
       </div>
 
       <Handle
@@ -87,6 +98,9 @@ export const NeedNode: React.FC<{ data: NeedNodeData }> = ({ data }) => {
             <div className="text-[10px] text-slate-400 max-w-[200px] truncate">
               {item.desiredOutcome}
             </div>
+          )}
+          {item.owner && (
+            <div className="text-[10px] text-slate-400">Owner: {item.owner}</div>
           )}
         </div>
       )}

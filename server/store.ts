@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Phase, Item, Attachment, AuditLog } from '../src/types/index.ts';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
 
 interface DatabaseSchema {
@@ -352,6 +352,12 @@ class DatabaseStore {
       }
     } catch (e) {
       console.warn('Error reading db.json, using defaults:', e);
+      // Keep the unreadable file aside instead of overwriting it with defaults
+      if (fs.existsSync(DB_FILE)) {
+        const corruptFile = `${DB_FILE}.corrupt-${Date.now()}`;
+        fs.renameSync(DB_FILE, corruptFile);
+        console.warn(`Unreadable db.json moved to ${corruptFile}`);
+      }
     }
 
     const initialData: DatabaseSchema = {
@@ -379,7 +385,10 @@ class DatabaseStore {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      // Atomic write: a crash mid-write must never leave a truncated db.json
+      const tmpFile = `${DB_FILE}.tmp`;
+      fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
+      fs.renameSync(tmpFile, DB_FILE);
     } catch (err) {
       console.error('Failed to save db.json:', err);
     }

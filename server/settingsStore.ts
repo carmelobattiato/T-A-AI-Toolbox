@@ -43,7 +43,10 @@ class SettingsStore {
   public save(newSettings: Partial<AISettings>): AISettings {
     this.ensureDir();
     this.settings = { ...this.settings, ...newSettings };
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(this.settings, null, 2), 'utf-8');
+    // Atomic write: a crash mid-write must never leave a truncated settings.json
+    const tmpFile = `${SETTINGS_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(this.settings, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, SETTINGS_FILE);
     return this.settings;
   }
 

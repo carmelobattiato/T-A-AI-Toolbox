@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Item, Phase } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
+import { getOwnerInitials } from '../../utils/owner.ts';
 
 interface ToolNodeData {
   item: Item;
@@ -17,9 +18,7 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const coveredPhases = phases.filter(p => item.phaseIds.includes(p.id));
-  const ownerInitials = item.owner
-    ? item.owner.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'TA';
+  const ownerInitials = getOwnerInitials(item.owner);
 
   return (
     <div
