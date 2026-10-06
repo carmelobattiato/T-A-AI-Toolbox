@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Item, Phase, Attachment } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
+import { getOwnerInitials } from '../../utils/owner.ts';
 import {
   X,
   ExternalLink,
@@ -286,24 +287,6 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     )}
                   </div>
                 </div>
-
-                {/* Owner / POC */}
-                <div>
-                  <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Owner / POC
-                  </h4>
-                  <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-200">
-                    <div className="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">
-                      {(item.owner || 'CB').slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-slate-900">{item.owner || 'Team T&A'}</div>
-                      <div className="text-[10px] text-slate-500">
-                        {item.owner ? `${item.owner.toLowerCase().replace(/\s+/g, '.')}@accenture.com` : 'team.ta@accenture.com'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </>
             )}
 
@@ -378,6 +361,29 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 )}
               </>
             )}
+
+            {/* Owner (all types, label matches the edit form) */}
+            <div>
+              <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {item.type === 'TOOL' ? 'Owner / POC' : item.type === 'IDEA' ? 'Proponente / Autore' : 'Owner / Referente'}
+              </h4>
+              <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">
+                  {getOwnerInitials(item.owner)}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-900">{item.owner || 'Team T&A'}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {/* Owner may already be an email (SSO username from x-forwarded-user) */}
+                    {item.owner
+                      ? item.owner.includes('@')
+                        ? item.owner.toLowerCase()
+                        : `${item.owner.toLowerCase().replace(/\s+/g, '.')}@accenture.com`
+                      : 'team.ta@accenture.com'}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
