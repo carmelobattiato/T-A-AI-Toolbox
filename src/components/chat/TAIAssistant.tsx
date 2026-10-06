@@ -413,8 +413,8 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                 </div>
 
                 {msg.role === 'user' && (
-                  <div className="w-6 h-6 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 mt-0.5 text-[9px] font-bold">
-                    CB
+                  <div className="w-6 h-6 rounded-full bg-purple-700 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs" title="Tu">
+                    <User className="w-3.5 h-3.5" />
                   </div>
                 )}
               </div>

@@ -1,0 +1,501 @@
+{
+  "phases": [
+    {
+      "id": "phase-0",
+      "title": "Pre-Sales & Estimation",
+      "description": "Preparazione della soluzione, effort, staffing, costi, price e proposta.",
+      "activities": [
+        "Inventario pre-sales e requirement gathering",
+        "Stime effort e sizing",
+        "Staffing plan e seniority mix",
+        "Cost and pricing model",
+        "Elaborazione proposta tecnica"
+      ],
+      "position": 0,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.055Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-1",
+      "title": "Assessment",
+      "description": "Comprendere il punto di partenza e dimensionare l'iniziativa.",
+      "activities": [
+        "Inventario applicazioni e servizi",
+        "Architetture e componenti",
+        "Middleware e integrazioni",
+        "Dati, volumi e retention",
+        "Dipendenze e coupling",
+        "Capacity e vincoli infrastrutturali"
+      ],
+      "position": 1,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-2",
+      "title": "Gap Analysis & Target Design",
+      "description": "Definire come evolvere AS-IS verso TO-BE.",
+      "activities": [
+        "Confronto AS-IS vs TO-BE",
+        "Mappatura gap funzionali e tecnici",
+        "Target architecture e security baseline",
+        "Scelta degli architectural patterns",
+        "Remediation plan e migration strategy"
+      ],
+      "position": 2,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-3",
+      "title": "Readiness & Provisioning",
+      "description": "Predisporre tutti i prerequisiti infrastrutturali ed ecosistemici.",
+      "activities": [
+        "Ambienti cloud e on-premise",
+        "Networking, VPC e routing",
+        "Database, storage e repliche",
+        "Middleware e message broker",
+        "Cache, search e cluster indexing",
+        "Credenziali, IAM e connettività"
+      ],
+      "position": 3,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-4",
+      "title": "Application & DevOps Adaptation",
+      "description": "Rendere applicazioni e deployment compatibili con il target.",
+      "activities": [
+        "Configurazioni e containerizzazione",
+        "Integrazioni API e contract testing",
+        "Secret management e secure vault",
+        "Manifest Kubernetes e Helm chart",
+        "Pipeline CI/CD e Infrastructure as Code",
+        "Automazione del delivery"
+      ],
+      "position": 4,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-5",
+      "title": "Test & Validation",
+      "description": "Validare soluzione, integrazioni e ambienti.",
+      "activities": [
+        "Test tecnici e di connettività",
+        "Test funzionali e regressione",
+        "Test non funzionali e load testing",
+        "Integration test con terze parti",
+        "Performance, latency e resilienza",
+        "Collaudo utente (UAT)"
+      ],
+      "position": 5,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-6",
+      "title": "Migration & Cutover",
+      "description": "Eseguire la transizione minimizzando rischio e downtime.",
+      "activities": [
+        "Data migration e sync incrementale",
+        "Esecuzione runbook dettagliato",
+        "Cutover e switch DNS/traffic",
+        "Restart e healthcheck post-migrazione",
+        "Verifiche di integrità e business sign-off",
+        "Procedure di rollback verificate"
+      ],
+      "position": 6,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "phase-7",
+      "title": "Operate & Handover",
+      "description": "Portare il servizio a regime e stabilizzarlo.",
+      "activities": [
+        "Monitoring, alert e observability 24/7",
+        "Stabilizzazione e tuning prestazioni",
+        "Incident management e anomaly detection",
+        "Handover al team operativo",
+        "Presa in carico formale",
+        "Dismissione infrastruttura legacy"
+      ],
+      "position": 7,
+      "isCore": true,
+      "createdBy": "system",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    }
+  ],
+  "items": [
+    {
+      "id": "item-tool-1",
+      "type": "TOOL",
+      "title": "Document AI",
+      "summary": "Analisi e acquisizione documentale a supporto delle attività di assessment.",
+      "description": "Tool che utilizza un modello LLM per estrarre informazioni strutturate da documentazione tecnica, specifiche architetturali e manuali legacy.",
+      "phaseIds": [
+        "phase-1"
+      ],
+      "generalizationRequired": true,
+      "owner": "Carmelo Battiato",
+      "githubUrl": "https://github.com/carmelobattiato/document-ai",
+      "catalogUrl": "https://garage.accenture.com/tools/document-ai",
+      "notes": "Necessita di generalizzare i parser PDF e diagrammi raster.",
+      "createdBy": "Carmelo Battiato",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-tool-2",
+      "type": "TOOL",
+      "title": "Draw.io AI Architecture Assistant",
+      "summary": "Generazione assistita di diagrammi architetturali Draw.io partendo da prompt e architetture AS-IS.",
+      "description": "Tool che utilizza modelli di ragionamento e XML generation per produrre diagrammi Draw.io conformi ai pattern architetturali aziendali a partire da descrizioni testuali, documentazione o schemi AS-IS.",
+      "phaseIds": [
+        "phase-1",
+        "phase-2"
+      ],
+      "generalizationRequired": false,
+      "owner": "Carmelo Battiato",
+      "githubUrl": "https://github.com/carmelobattiato/drawio-ai-flow",
+      "catalogUrl": "https://garage.accenture.com/tools/drawio-ai",
+      "demoUrl": "https://demo.drawio-ai.accenture.com",
+      "notes": "Supporta import XML e visualizzazione interattiva.",
+      "createdBy": "Carmelo Battiato",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:42:08.695Z"
+    },
+    {
+      "id": "item-tool-3",
+      "type": "TOOL",
+      "title": "Estimator Web",
+      "summary": "Applicazione web per la gestione strutturata di effort, risorse, costi e price.",
+      "description": "Piattaforma web interna per la scomposizione WBS, stima effort con parametric model, allocazione seniority e calcolo marginalità per offerte T&A.",
+      "phaseIds": [
+        "phase-0"
+      ],
+      "generalizationRequired": false,
+      "owner": "Marco Rossi",
+      "catalogUrl": "https://garage.accenture.com/tools/estimator-web",
+      "notes": "In produzione, utilizzato regolarmente per le offerte.",
+      "createdBy": "Marco Rossi",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-tool-4",
+      "type": "TOOL",
+      "title": "Generic Agent Template",
+      "summary": "Template general purpose per creare agenti configurando prompt e MCP disponibili.",
+      "description": "Struttura modulare TypeScript e Python con scaffolding standard per costruire agenti T&A collegati a Model Context Protocol (MCP) aziendali, logging e tracing.",
+      "phaseIds": [
+        "phase-1",
+        "phase-2",
+        "phase-3",
+        "phase-4",
+        "phase-5",
+        "phase-6",
+        "phase-7"
+      ],
+      "generalizationRequired": true,
+      "owner": "Carmelo Battiato",
+      "githubUrl": "https://github.com/carmelobattiato/generic-agent-template",
+      "notes": "Usato con successo in 3 progetti pilota, pronto per estensione cross-team.",
+      "createdBy": "Carmelo Battiato",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-idea-1",
+      "type": "IDEA",
+      "title": "Terraform / IaC Agent",
+      "summary": "Agente per la generazione automatica di moduli Infrastructure as Code.",
+      "problem": "Accelerare la produzione di Infrastructure as Code evitando errori di naming e configurazioni non standard.",
+      "requirements": "Utilizzare target architecture, standard infrastrutturali aziendali e requisiti per generare una prima versione dei moduli Terraform con validazione tflint e checkov.",
+      "expectedBenefit": "Risparmio di oltre il 60% nel setup iniziale degli ambienti cloud con conformità security by-design.",
+      "phaseIds": [
+        "phase-3",
+        "phase-4"
+      ],
+      "owner": "Carmelo Battiato",
+      "createdBy": "Carmelo Battiato",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-1",
+      "type": "NEED",
+      "title": "Inventario automatico applicazioni",
+      "summary": "Automatizzare la raccolta delle informazioni relative ad applicazioni, componenti e dipendenze.",
+      "description": "La raccolta manuale tramite interviste e fogli di calcolo è lenta e soggetta ad errori.",
+      "currentProcess": "Interviste manuali con gli application owner e compilazione fogli Excel.",
+      "desiredTool": "Discovery scanner o agente interrogatore che legga repository Git e configmap.",
+      "desiredOutcome": "Inventario sempre aggiornato con mapping automatico del tech stack.",
+      "phaseIds": [
+        "phase-1"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-2",
+      "type": "NEED",
+      "title": "Analisi dipendenze",
+      "summary": "Analizzare automaticamente dipendenze infrastrutturali e applicative.",
+      "description": "Mappare chiamate API sincrone/asincrone e database condivisi tra microservizi.",
+      "currentProcess": "Revisione documentale frammentata.",
+      "desiredTool": "Dependency graph extractor da log e OpenAPI specs.",
+      "desiredOutcome": "Grafo visivo delle dipendenze per pianificare onde di migrazione sicure.",
+      "phaseIds": [
+        "phase-1",
+        "phase-2"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-3",
+      "type": "NEED",
+      "title": "Standardizzare diagrammi architetturali",
+      "summary": "Uniformare e validare i diagrammi Draw.io e plantUML rispetto alle linee guida T&A.",
+      "description": "Ogni architetto usa icone e stili diversi, rendendo complessa la lettura unificata.",
+      "currentProcess": "Disegno manuale non vincolato a librerie standard.",
+      "desiredOutcome": "Validatore e assistente di stile automatico.",
+      "phaseIds": [
+        "phase-2"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-4",
+      "type": "NEED",
+      "title": "Automatizzare Terraform",
+      "summary": "Generare codice Terraform partendo da specifiche di architettura target.",
+      "description": "Vorrei un agente che partendo dal Target Design produca automaticamente una prima versione dei moduli Terraform.",
+      "currentProcess": "Scrittura manuale dei file .tf a partire dai diagrammi.",
+      "desiredTool": "Agente LLM con tooling MCP Terraform e template pre-approvati.",
+      "desiredOutcome": "Codice IaC pronto per la review in pull request.",
+      "phaseIds": [
+        "phase-3",
+        "phase-4"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-5",
+      "type": "NEED",
+      "title": "Test automatici",
+      "summary": "Esecuzione assistita e validazione automatica dei test tecnici e di connettività.",
+      "description": "Validare automaticamente endpoint, latenze e firewall rule tra sorgente e target.",
+      "currentProcess": "Script ad-hoc eseguiti manualmente da vari team.",
+      "desiredOutcome": "Suite di test di collaudo eseguibile in un click con report conformità.",
+      "phaseIds": [
+        "phase-5"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-6",
+      "type": "NEED",
+      "title": "Runbook automatici",
+      "summary": "Generazione e verifica automatizzata dei runbook di cutover con step di rollback.",
+      "description": "I cutover notturni richiedono sincronizzazione meticolosa dei team; i runbook cartacei sono rischiosi.",
+      "currentProcess": "Checklist su foglio di calcolo con tick manuali.",
+      "desiredOutcome": "Runbook interattivo con step automatizzabili e timer di rollback verificati.",
+      "phaseIds": [
+        "phase-6"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-need-7",
+      "type": "NEED",
+      "title": "Monitoring anomalie",
+      "summary": "Identificazione proattiva e triage automatico delle anomalie a regime.",
+      "description": "Rilevare tempestivamente drift di prestazioni o errori applicativi subito dopo l'handover.",
+      "currentProcess": "Controllo dashboard Grafana da parte del team di reperibilità.",
+      "desiredOutcome": "Agente di observability che correla log e metriche spiegando la root cause.",
+      "phaseIds": [
+        "phase-7"
+      ],
+      "createdBy": "local.user",
+      "createdAt": "2026-10-05T17:06:17.056Z",
+      "updatedAt": "2026-10-05T17:06:17.056Z"
+    },
+    {
+      "id": "item-1791224696581-38mq6",
+      "type": "NEED",
+      "title": "mi crei una nuova esigenza su Pre-Sales & Estimation di test yyy?",
+      "summary": "",
+      "description": "mi crei una nuova esigenza su Pre-Sales & Estimation di test yyy?",
+      "notes": "",
+      "phaseIds": [
+        "phase-0"
+      ],
+      "generalizationRequired": false,
+      "desiredTool": "Agente / Tool automatizzato",
+      "createdBy": "Team T&A",
+      "createdAt": "2026-10-05T18:24:56.581Z",
+      "updatedAt": "2026-10-05T18:24:56.581Z"
+    }
+  ],
+  "attachments": [],
+  "auditLogs": [
+    {
+      "id": "log-1791224912296-u9ee",
+      "user": "Team T&A",
+      "action": "DELETE",
+      "entityType": "ITEM",
+      "entityId": "item-1791224907999-vjlz4",
+      "payload": {
+        "title": "Test Esigenza da Cancellare",
+        "type": "NEED"
+      },
+      "createdAt": "2026-10-05T18:28:32.296Z"
+    },
+    {
+      "id": "log-1791224907999-ka7r",
+      "user": "Team T&A",
+      "action": "CREATE",
+      "entityType": "ITEM",
+      "entityId": "item-1791224907999-vjlz4",
+      "payload": {
+        "id": "item-1791224907999-vjlz4",
+        "type": "NEED",
+        "title": "Test Esigenza da Cancellare",
+        "summary": "",
+        "description": "",
+        "notes": "",
+        "phaseIds": [
+          "phase-0"
+        ],
+        "generalizationRequired": false,
+        "createdBy": "Team T&A",
+        "createdAt": "2026-10-05T18:28:27.999Z",
+        "updatedAt": "2026-10-05T18:28:27.999Z"
+      },
+      "createdAt": "2026-10-05T18:28:27.999Z"
+    },
+    {
+      "id": "log-1791224696581-41re",
+      "user": "Team T&A",
+      "action": "CREATE",
+      "entityType": "ITEM",
+      "entityId": "item-1791224696581-38mq6",
+      "payload": {
+        "id": "item-1791224696581-38mq6",
+        "type": "NEED",
+        "title": "mi crei una nuova esigenza su Pre-Sales & Estimation di test yyy?",
+        "summary": "",
+        "description": "mi crei una nuova esigenza su Pre-Sales & Estimation di test yyy?",
+        "notes": "",
+        "phaseIds": [
+          "phase-0"
+        ],
+        "generalizationRequired": false,
+        "desiredTool": "Agente / Tool automatizzato",
+        "createdBy": "Team T&A",
+        "createdAt": "2026-10-05T18:24:56.581Z",
+        "updatedAt": "2026-10-05T18:24:56.581Z"
+      },
+      "createdAt": "2026-10-05T18:24:56.581Z"
+    },
+    {
+      "id": "log-1791223793527-k4lu",
+      "user": "Carmelo Battiato",
+      "action": "DELETE",
+      "entityType": "ITEM",
+      "entityId": "item-1791222222470-u9gi0",
+      "payload": {
+        "title": "xxx",
+        "type": "NEED"
+      },
+      "createdAt": "2026-10-05T18:09:53.527Z"
+    },
+    {
+      "id": "log-1791222222471-jflv",
+      "user": "Carmelo Battiato",
+      "action": "CREATE",
+      "entityType": "ITEM",
+      "entityId": "item-1791222222470-u9gi0",
+      "payload": {
+        "id": "item-1791222222470-u9gi0",
+        "type": "NEED",
+        "title": "xxx",
+        "summary": "",
+        "description": "cccc",
+        "notes": "",
+        "phaseIds": [
+          "phase-1"
+        ],
+        "generalizationRequired": false,
+        "createdBy": "Carmelo Battiato",
+        "createdAt": "2026-10-05T17:43:42.470Z",
+        "updatedAt": "2026-10-05T17:43:42.470Z"
+      },
+      "createdAt": "2026-10-05T17:43:42.471Z"
+    },
+    {
+      "id": "log-1791222128695-fa6c",
+      "user": "Carmelo Battiato",
+      "action": "UPDATE",
+      "entityType": "ITEM",
+      "entityId": "item-tool-2",
+      "payload": {
+        "type": "TOOL",
+        "title": "Draw.io AI Architecture Assistant",
+        "summary": "Generazione assistita di diagrammi architetturali Draw.io partendo da prompt e architetture AS-IS.",
+        "description": "Tool che utilizza modelli di ragionamento e XML generation per produrre diagrammi Draw.io conformi ai pattern architetturali aziendali a partire da descrizioni testuali, documentazione o schemi AS-IS.",
+        "phaseIds": [
+          "phase-1",
+          "phase-2"
+        ],
+        "owner": "Carmelo Battiato",
+        "generalizationRequired": false,
+        "githubUrl": "https://github.com/carmelobattiato/drawio-ai-flow",
+        "catalogUrl": "https://garage.accenture.com/tools/drawio-ai",
+        "demoUrl": "https://demo.drawio-ai.accenture.com",
+        "notes": "Supporta import XML e visualizzazione interattiva."
+      },
+      "createdAt": "2026-10-05T17:42:08.695Z"
+    },
+    {
+      "id": "log-init",
+      "user": "system",
+      "action": "CREATE",
+      "entityType": "PHASE",
+      "entityId": "all",
+      "payload": {
+        "count": 8
+      },
+      "createdAt": "2026-10-05T17:06:17.056Z"
+    }
+  ]
+}

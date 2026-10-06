@@ -27,6 +27,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
   onDeletePhase,
 }) => {
   const [activeTab, setActiveTab] = useState<'tools' | 'ideas' | 'needs'>('tools');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const phaseTools = items.filter(i => i.type === 'TOOL' && i.phaseIds.includes(phase.id));
   const phaseIdeas = items.filter(i => i.type === 'IDEA' && i.phaseIds.includes(phase.id));
@@ -297,18 +298,37 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
       {!phase.isCore && (
         <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <span className="text-[11px] text-slate-400">Fase personalizzata</span>
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm(`Sei sicuro di voler eliminare la fase "${phase.title}"?`)) {
-                onDeletePhase(phase.id);
-              }
-            }}
-            className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Elimina fase</span>
-          </button>
+          {showDeleteConfirm ? (
+            <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
+              <span className="text-[11px] font-bold text-red-700">Eliminare?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeletePhase(phase.id);
+                  setShowDeleteConfirm(false);
+                }}
+                className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                Sì, elimina
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-2 py-1 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-xs transition-colors cursor-pointer"
+              >
+                Annulla
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1.5 rounded hover:bg-red-50 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Elimina fase</span>
+            </button>
+          )}
         </div>
       )}
     </div>

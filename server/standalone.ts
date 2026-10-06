@@ -1,29 +1,27 @@
 import express, { Request, Response } from 'express';
-import path from 'path';
 import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { db } from './server/store.ts';
-import { settingsStore } from './server/settingsStore.ts';
-import { handleAssistantChat } from './server/assistant.ts';
+import { db } from './store.ts';
+import { settingsStore } from './settingsStore.ts';
+import { handleAssistantChat } from './assistant.ts';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
-const PORT = 3000;
-const isProduction = process.env.NODE_ENV === 'production';
+const PORT = process.env.PORT || 5000;
+const DATA_DIR = process.env.DATA_DIR || './data';
 
-// Increase payload limit for base64 screenshots/attachments (up to 10MB)
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Increase payload limit for base64 screenshots and documents (up to 15MB)
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
-// CORS middleware for separate frontend and backend containers
+// Full CORS headers
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-forwarded-user');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-forwarded-user'
+  );
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
     return;
@@ -38,10 +36,18 @@ function getUser(req: Request): string {
   return 'Team T&A';
 }
 
-// --- API ROUTES ---
+// Healthcheck endpoint
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    service: 'ta-toolbox-backend',
+    dataDir: DATA_DIR,
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // 1. Phases
-app.get('/api/phases', (req: Request, res: Response) => {
+app.get('/api/phases', (_req: Request, res: Response) => {
   try {
     const phases = db.getPhases();
     res.json(phases);
@@ -79,7 +85,7 @@ app.delete('/api/phases/:id', (req: Request, res: Response) => {
     const user = getUser(req);
     const success = db.deletePhase(req.params.id, user);
     if (!success) {
-      res.status(404).json({ error: 'Fase non trovata' });
+      res.status(400).json({ error: 'Impossibile eliminare una fase core o fase non trovata' });
       return;
     }
     res.json({ success: true, message: 'Fase eliminata' });
@@ -88,7 +94,7 @@ app.delete('/api/phases/:id', (req: Request, res: Response) => {
   }
 });
 
-// 2. Items (Tools, Ideas, Needs)
+// 2. Items (Tool, Idea, Need)
 app.get('/api/items', (req: Request, res: Response) => {
   try {
     const { type, phaseId, search } = req.query;
@@ -249,29 +255,12 @@ app.post('/api/settings/test', async (req: Request, res: Response) => {
   }
 });
 
-// --- VITE MIDDLEWARE OR STATIC SERVING ---
-async function startServer() {
-  if (!isProduction) {
-    const { createServer } = await import('vite');
-    const vite = await createServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-      },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
-  });
-}
-
-startServer();
+// Start Standalone Server
+app.listen(PORT, () => {
+  console.log(`=========================================`);
+  console.log(`T&A AI Toolbox - Standalone Backend API`);
+  console.log(`Port: ${PORT}`);
+  console.log(`Data Directory: ${DATA_DIR}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
+  console.log(`=========================================`);
+});

@@ -27,7 +27,7 @@ export const ToolForm: React.FC<ToolFormProps> = ({
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>(
     initialData?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : ['phase-1'])
   );
-  const [owner, setOwner] = useState(initialData?.owner || 'Carmelo Battiato');
+  const [owner, setOwner] = useState(initialData?.owner || 'Team T&A');
   const [generalizationRequired, setGeneralizationRequired] = useState(
     initialData?.generalizationRequired ?? false
   );
@@ -183,7 +183,7 @@ export const ToolForm: React.FC<ToolFormProps> = ({
                 type="text"
                 value={owner}
                 onChange={e => setOwner(e.target.value)}
-                placeholder="es. Carmelo Battiato"
+                placeholder="es. Team T&A / Cloud Architecture"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
               />
             </div>

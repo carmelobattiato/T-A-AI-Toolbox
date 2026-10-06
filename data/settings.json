@@ -1,0 +1,6 @@
+{
+  "provider": "gemini",
+  "openaiBaseUrl": "https://api.openai.com/v1",
+  "openaiModel": "gpt-4o-mini",
+  "openaiApiKey": ""
+}

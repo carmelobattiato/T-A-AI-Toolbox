@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { db } from './store.ts';
-import { PendingAction } from '../src/types/index.ts';
+import { settingsStore } from './settingsStore.ts';
+import { PendingAction, AISettings } from '../src/types/index.ts';
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -676,7 +677,60 @@ export async function handleAssistantChat(
     return executeLocalIntents(userMessage, user, confirmedAction, cancelAction);
   }
 
-  // If message contains explicit delete or rename intent, handle with confirmation prompt immediately
+  async function handleOpenAIChat(
+  userMessage: string,
+  user: string,
+  settings: AISettings
+): Promise<{ reply: string; actionSummary?: string; pendingAction?: PendingAction } | null> {
+  const allPhases = db.getPhases();
+  const allItems = db.getItems();
+
+  let baseUrl = (settings.openaiBaseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
+  if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+    baseUrl = 'https://' + baseUrl;
+  }
+
+  const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
+L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
+Rispondi in modo professionale, conciso e in lingua italiana, utilizzando formattazione markdown (elenchi puntati, **grassetto**, ecc.).
+Puoi suggerire la creazione di tool, idee ed esigenze. Per qualsiasi eliminazione o modifica, chiedi sempre conferma preventiva all'utente prima di procedere.
+Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze) e ${allPhases.length} fasi.
+Fasi di processo:
+${allPhases.map(p => `- ${p.id} (pos ${p.position}): ${p.title} - ${p.description}`).join('\n')}
+Elementi attuali:
+${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds.join(', ')}): ${i.summary || i.description?.substring(0, 100)}`).join('\n')}`;
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.openaiApiKey.trim()}`,
+    },
+    body: JSON.stringify({
+      model: settings.openaiModel || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: userMessage }
+      ],
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('Custom OpenAI API error:', res.status, errorText);
+    throw new Error(`Errore API OpenAI custom (${res.status}): ${errorText.substring(0, 100)}`);
+  }
+
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || '';
+
+  return {
+    reply: text || 'Nessuna risposta dal modello custom.',
+  };
+}
+
+// If message contains explicit delete or rename intent, handle with confirmation prompt immediately
   const p = userMessage.toLowerCase().trim();
   if (
     p.startsWith('cancellami') ||
@@ -688,7 +742,18 @@ export async function handleAssistantChat(
     return executeLocalIntents(userMessage, user);
   }
 
-  // If GEMINI_API_KEY is available, invoke Gemini 3.8 Flash with tools
+  // 1. Check if Custom OpenAI is enabled and configured
+  const aiSettings = settingsStore.getSettings();
+  if (aiSettings.provider === 'openai' && aiSettings.openaiApiKey) {
+    try {
+      const openAiResult = await handleOpenAIChat(userMessage, user, aiSettings);
+      if (openAiResult) return openAiResult;
+    } catch (err: any) {
+      console.warn('Custom OpenAI execution error, attempting Gemini/local fallback:', err.message);
+    }
+  }
+
+  // 2. If GEMINI_API_KEY is available, invoke Gemini 3.8 Flash with tools
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10) {
     try {
       const allPhases = db.getPhases();

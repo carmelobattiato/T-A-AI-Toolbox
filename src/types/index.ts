@@ -101,3 +101,11 @@ export interface FilterState {
   showNeeds: boolean;
   onlyGeneralize: boolean;
 }
+
+export interface AISettings {
+  provider: 'gemini' | 'openai';
+  openaiBaseUrl: string;
+  openaiModel: string;
+  openaiApiKey: string;
+  isConfigured?: boolean;
+}
