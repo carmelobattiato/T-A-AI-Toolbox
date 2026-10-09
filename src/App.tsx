@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Phase, Item, FilterState } from './types/index.ts';
-import { Header } from './components/header/Header.tsx';
+import { Phase, Item, FilterState, DashboardTile } from './types/index.ts';
+import { Header, AppView } from './components/header/Header.tsx';
+import { Dashboard } from './components/dashboard/Dashboard.tsx';
 import { FilterBar } from './components/header/FilterBar.tsx';
 import { ToolboxGraph } from './components/graph/ToolboxGraph.tsx';
 import { PhaseDrawer } from './components/drawers/PhaseDrawer.tsx';
@@ -12,12 +13,16 @@ import { PhaseForm } from './components/forms/PhaseForm.tsx';
 import { AuditLogModal } from './components/modals/AuditLogModal.tsx';
 import { SettingsModal } from './components/modals/SettingsModal.tsx';
 import { TAIAssistant } from './components/chat/TAIAssistant.tsx';
-import { CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [view, setView] = useState<AppView>('map');
+  const [tiles, setTiles] = useState<DashboardTile[]>([]);
+  const [chatPreset, setChatPreset] = useState<{ text: string; nonce: number } | null>(null);
 
   // Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -79,9 +84,10 @@ export default function App() {
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setIsLoading(true);
     try {
-      const [phasesRes, itemsRes] = await Promise.all([
+      const [phasesRes, itemsRes, tilesRes] = await Promise.all([
         fetch('/api/phases'),
         fetch('/api/items'),
+        fetch('/api/dashboard/tiles'),
       ]);
 
       if (phasesRes.ok && itemsRes.ok) {
@@ -89,6 +95,7 @@ export default function App() {
         const itemsData = await itemsRes.json();
         setPhases(phasesData);
         setItems(itemsData);
+        if (tilesRes.ok) setTiles(await tilesRes.json());
       }
     } catch (err) {
       console.error('Failed to load data:', err);
@@ -185,20 +192,20 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ideaData),
       });
-      if (!res.ok) throw new Error('Errore aggiornamento Idea');
+      if (!res.ok) throw new Error('Errore aggiornamento WiP');
       const updated = await res.json();
       setItems(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-      showToast(`Idea "${updated.title}" aggiornata.`);
+      showToast(`WiP "${updated.title}" aggiornato.`);
     } else {
       const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ideaData),
       });
-      if (!res.ok) throw new Error('Errore creazione Idea');
+      if (!res.ok) throw new Error('Errore creazione WiP');
       const created = await res.json();
       setItems(prev => [...prev, created]);
-      showToast(`Idea "${created.title}" aggiunta alla mappa.`);
+      showToast(`WiP "${created.title}" aggiunto alla mappa.`);
     }
     setIdeaModalOpen(false);
     setEditingIdea(null);
@@ -315,13 +322,6 @@ export default function App() {
     showToast('Allegato rimosso.');
   };
 
-  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-
-  // Reset to initial seed
-  const handleResetSeed = async () => {
-    setResetConfirmOpen(true);
-  };
-
   const selectedPhase = phases.find(p => p.id === focusedPhaseId) || null;
   const selectedItem = items.find(i => i.id === focusedItemId) || null;
 
@@ -329,6 +329,8 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#FAFBFD] text-slate-900 font-sans">
       {/* Sticky Top Header */}
       <Header
+        view={view}
+        onViewChange={setView}
         filters={filters}
         onFilterChange={setFilters}
         onNewPhase={() => {
@@ -337,16 +339,40 @@ export default function App() {
           setPhaseModalOpen(true);
         }}
         onOpenAuditLog={() => setAuditLogModalOpen(true)}
-        onResetSeed={handleResetSeed}
         onOpenSettings={() => setSettingsModalOpen(true)}
         isCustomAiActive={isCustomAiActive}
       />
 
-      <FilterBar filters={filters} onFilterChange={setFilters} />
+      {view === 'map' && <FilterBar filters={filters} onFilterChange={setFilters} />}
 
       {/* Main Workspace Canvas Area */}
       <div className="flex-1 relative overflow-hidden flex">
-        {isLoading ? (
+        {view === 'dashboard' ? (
+          <Dashboard
+            items={items}
+            phases={phases}
+            tiles={tiles}
+            onSelectItem={item => {
+              setView('map');
+              handleSelectItem(item);
+            }}
+            onAddTile={slot =>
+              setChatPreset({
+                text: `Voglio configurare il tile N°${slot} della dashboard. Vorrei visualizzare: `,
+                nonce: Date.now(),
+              })
+            }
+            onDeleteTile={async slot => {
+              const res = await fetch(`/api/dashboard/tiles/${slot}`, { method: 'DELETE' });
+              if (res.ok) {
+                setTiles(prev => prev.filter(t => t.slot !== slot));
+                showToast(`Tile N°${slot} rimosso.`);
+              } else {
+                showToast('Errore durante la rimozione del tile.', 'error');
+              }
+            }}
+          />
+        ) : isLoading ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-3">
             <div className="w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
             <p className="text-xs font-semibold text-slate-500">
@@ -391,7 +417,7 @@ export default function App() {
         )}
 
         {/* Phase Drawer (Right side) */}
-        {selectedPhase && (
+        {view === 'map' && selectedPhase && (
           <PhaseDrawer
             phase={selectedPhase}
             items={items}
@@ -421,7 +447,7 @@ export default function App() {
         )}
 
         {/* Item Detail Drawer (Right side) */}
-        {selectedItem && (
+        {view === 'map' && selectedItem && (
           <ItemDrawer
             item={selectedItem}
             phases={phases}
@@ -453,6 +479,7 @@ export default function App() {
       <TAIAssistant
         onRefreshData={() => loadData(true)}
         isDrawerOpen={Boolean(selectedPhase || selectedItem)}
+        presetRequest={chatPreset}
       />
 
       {/* Tool Modal Form */}
@@ -521,41 +548,6 @@ export default function App() {
           showToast('Configurazione AI salvata.');
         }}
       />
-
-      {/* Reset Confirmation Dialog */}
-      {resetConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs select-none">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-2.5 text-amber-600">
-              <RotateCcw className="w-5 h-5" />
-              <h3 className="font-bold text-sm text-slate-900">Ripristina dati iniziali?</h3>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Vuoi ricaricare il grafo allo stato standard iniziale del processo T&A?
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setResetConfirmOpen(false)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setResetConfirmOpen(false);
-                  loadData();
-                  showToast('Dati ricaricati.');
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-colors cursor-pointer"
-              >
-                Ripristina
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast Feedback */}
       {toast && (

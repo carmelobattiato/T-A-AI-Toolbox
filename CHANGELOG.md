@@ -4,6 +4,73 @@
 
 ---
 
+## [0.2] — 2026-10-10
+
+Modifiche successive al rilascio `[0.1]`.
+
+### Barra filtri, WiP e priorità
+
+- I toggle **Tool / WiP / Esigenze** e la casella "Da generalizzare" sono stati spostati dall'header alla barra filtri (nell'header restano ricerca testuale e azioni). "Azzera filtri" riporta lo slider a "Tutto" e svuota tag/cliente; i toggle non cambiano.
+- Nell'interfaccia le **Idee** si chiamano **WiP** (toggle, badge su bolla e pannello, tab e pulsante "Aggiungi WiP" della fase, titoli e messaggi del form, toast, legenda e conteggio della mappa, segnaposto della ricerca, benvenuto della chat). Nessuna modifica a dati e API: il tipo resta `IDEA`. Non rinominati le risposte e i prompt dell'assistente (backend) e il suggerimento rapido "Aggiungi come idea un MCP per Kubernetes", perché il motore a regole riconosce quelle parole.
+- Rimosso dall'header il pulsante "Ripristina dati iniziali di test" (icona freccia circolare) con la sua finestra di conferma: ricaricava soltanto i dati dal server e non ripristinava nulla.
+- La miniatura "Panoramica" della mappa parte **chiusa**.
+- Nuovo campo opzionale `priority` (intero da 1 in su, 1 = priorità più alta) su WiP ed Esigenze, in `db.json`. Non obbligatorio: i `db.json` precedenti si caricano senza modifiche e gli elementi senza il campo mostrano "Non impostata". Campo "Priorità" nei form WiP ed Esigenza e sezione nel pannello dettagli (`P1 · più alta`, `P2`, …). Lato server (`store.ts`): sui Tool il campo viene ignorato; un valore non valido (0, decimale, testo) viene ignorato e lascia invariato il valore corrente; `null` lo cancella eliminando la chiave.
+
+### Dashboard
+
+- Nuova pagina **Dashboard**, raggiungibile dall'interruttore "Mappa / Dashboard" nell'header (nessuna dipendenza nuova, né router né libreria di grafici). Griglia **4 colonne × 2 righe = 8 tile numerati (N°1-N°8)**; la barra filtri e i pannelli laterali compaiono solo nella vista Mappa.
+- Un tile è un oggetto salvato nella dashboard con una **query** (elementi considerati, filtri, raggruppamento o ordinamento) e un **tipo di visualizzazione**. Il tile **N°1** predefinito è "Tool per cliente": barre verticali con i clienti sull'asse x e il numero di **Tool** (non WiP né Esigenze) taggati su ciascun cliente sull'asse y. I clienti si raggruppano senza distinguere maiuscole e un tool conta una sola volta per cliente.
+- **Tile creati con l'assistente**: ogni tile libero mostra il proprio numero e un pulsante **+** che apre la chat con il testo preimpostato "Voglio configurare il tile N°X della dashboard. Vorrei visualizzare: " da completare. L'assistente traduce la richiesta in query e visualizzazione con la funzione `create_dashboard_tile` e mostra una card di anteprima (query leggibile inclusa): il tile viene creato solo dopo "Conferma tile". Su uno slot occupato la card avvisa che lo sostituisce. Il prompt chiede al modello di chiamare subito la funzione, senza proporre alternative a parole.
+  - Visualizzazione `chart`: `bar` (una barra per valore di `groupBy`, y = numero di elementi), `number` (totale) oppure `list` (elenco ordinato di singoli elementi con titolo, tipo, clienti e priorità; il clic apre l'elemento nella mappa).
+  - Query: `itemTypes` (Tool, WiP, Esigenze; default tutti) e `where` facoltativo, filtri in AND: `customer`, `tag`, `phase` (titolo o ID), `owner` (testi che iniziano con il valore, senza maiuscole), `priorityMax` (solo elementi con priorità fino a N), `createdWithinDays`, `generalizationRequired`.
+  - `groupBy` per i grafici a barre: `customer`, `tag`, `phase`, `type`, `owner`, `priority`, `month`. Per cliente, tag e fase un elemento conta una volta per ogni valore; gli elementi senza owner, priorità o data validi finiscono in "N/D", quelli senza clienti o tag sono omessi.
+  - `sortBy` (`priority`, `createdAt`, `updatedAt`, `title`), `order` (`asc`, `desc`) e `limit` (1-20, default 5) per gli elenchi. Con `priority` compaiono solo gli elementi con priorità impostata; `asc` parte da 1 = la più alta. Esempio: "le 3 esigenze con priorità più alta" = elenco di Esigenze, `sortBy priority`, `asc`, `limit 3`.
+  - Il tile è sempre una specifica dichiarativa validata dal server (`validateTile`, anche i valori fuori elenco vengono rifiutati): nessun codice generato dal modello viene eseguito. Richieste fuori da queste dimensioni vanno spiegate dall'assistente.
+- **Ogni tile si può cancellare**, compreso il N°1 (cestino con conferma): lo slot torna libero e mostra di nuovo il **+**. Il tile predefinito è ora un tile vero in `db.json`: viene aggiunto una sola volta (primo avvio, oppure un DB che non ha ancora il campo `dashboardDefaultsApplied`) e, una volta cancellato, non ricompare al riavvio. Se lo slot N°1 è già occupato da un tile personalizzato, il predefinito non viene aggiunto.
+- I tile sono salvati in `db.json` nei nuovi campi opzionali `dashboardTiles` e `dashboardDefaultsApplied`: i `db.json` precedenti si caricano senza modifiche. Nuove route `GET /api/dashboard/tiles` e `DELETE /api/dashboard/tiles/:slot` in `server.ts` e `server/standalone.ts`.
+
+### Audit log in un file separato
+
+- Gli audit log non stanno più in `db.json` ma in `data/log.json` (array JSON, voci più recenti per prime, massimo 500 come prima), scritto con la stessa scrittura atomica (`log.json.tmp` + rename). `db.json` contiene solo fasi, tool, WiP, esigenze, allegati e tile della dashboard e non viene più riscritto per il solo log. L'API `GET /api/audit-logs` e la finestra "Registro modifiche" non cambiano.
+- **Migrazione automatica** al primo avvio: se `db.json` contiene ancora `auditLogs`, le voci vengono unite a quelle di un eventuale `log.json` (senza duplicati, per `id`), scritte in `log.json` e solo dopo tolte da `db.json`. Se la scrittura di `log.json` fallisce i log restano in `db.json`. Primo avvio senza dati: `log.json` parte con la voce `log-init`. Un `log.json` illeggibile viene rinominato in `log.json.corrupt-<timestamp>` e si riparte da un file nuovo.
+- `data/log.json` è in `.gitignore` e `.dockerignore`, `backup-db.sh` lo copia insieme agli altri file e `DEPLOYMENT.md` e `README.md` lo citano. Sui volumi Kubernetes esistenti non serve alcun intervento: il file viene creato nella stessa cartella `data/`.
+- Il backup manuale del volume descritto in "Operatività" copia solo `db.json`: per conservare anche la cronologia modifiche va copiato anche `log.json`.
+
+### File toccati
+
+```text
+ server.ts, server/standalone.ts          | route dei tile
+ server/assistant.ts                      | create_dashboard_tile, conferma CREATE_TILE, prompt
+ server/store.ts                          | priority, dashboardTiles, tile predefinito, log.json separato
+ src/App.tsx                              | vista Mappa/Dashboard, tile, richiesta preimpostata alla chat
+ src/components/chat/TAIAssistant.tsx     | testo preimpostato, card di conferma tile
+ src/components/dashboard/Dashboard.tsx   | nuovo: griglia 4x2, tile numerati, barre, numero, elenco
+ src/components/header/FilterBar.tsx      | toggle di tipo
+ src/components/header/Header.tsx         | interruttore Mappa/Dashboard, toggle rimossi
+ src/components/forms/{Idea,Need}Form.tsx | priorità, etichette WiP
+ src/components/drawers/*.tsx, src/components/graph/*.tsx | priorità, etichette WiP, panoramica chiusa
+ src/types/index.ts                       | Item.priority, DashboardTile, PendingAction
+ src/utils/dashboard.ts                   | nuovo: query dei tile, validateTile(), computeTile(), descrizioni
+```
+
+### Da sapere
+
+- La priorità non ha un limite massimo (solo intero ≥ 1) e non compare sulle bolle della mappa, solo nel form e nel pannello dettagli. L'assistente non conosce ancora `tags`, `customers` e `priority`.
+- La Dashboard conta tutti gli elementi, senza applicare i filtri della mappa.
+- Configurare un tile richiede un provider AI attivo (Gemini o OpenAI-compatibile): il motore a regole non gestisce `create_dashboard_tile`.
+- **L'assistente non ha memoria della conversazione**: ogni messaggio è indipendente. Se risponde con una domanda o una proposta e l'utente scrive solo "procedi", perde il contesto; conviene descrivere la richiesta completa in un unico messaggio.
+- Nel ramo Gemini nativo il modello può passare `confirmed: true` a `executeTool` e aggirare la conferma, anche per i tile (vedi limiti già indicati in `[0.1]`).
+
+### Verifiche eseguite
+
+- `tsc --noEmit` e `npm run build` senza errori.
+- Priorità: valore valido, sui Tool ignorato, non valido ignorato, `null` cancella; un `db.json` precedente (13 elementi) si carica senza il campo.
+- Dashboard: richiesta "le 3 esigenze con più alta priorità" con un finto provider OpenAI-compatibile (la card compare con elenco, `sortBy priority`, `asc`, `limit 3`; il tile non esiste prima della conferma, dopo è salvato in `db.json`; cancellazione dei tile 1 e 2 fino a griglia vuota); schema inviato al modello (parametri annidati `where`, enum, tipi); query di elenco e filtri (`priorityMax`, `customer`, `phase`, `createdWithinDays`, `generalizationRequired`, ordinamenti, limite, validazione di valori non ammessi); conteggi per cliente, fase, tipo, priorità, mese e totale; tile predefinito aggiunto su primo avvio, su un `db.json` precedente e su uno con `dashboardTiles` vuoto, e non più ricomparso dopo la cancellazione e il riavvio.
+- Audit log: migrazione di una copia del `db.json` reale (18 voci, da 30.828 a 16.415 byte; nessuna voce persa, nessuna chiave `auditLogs` rimasta), riavvio, nuova modifica, tetto di 500 voci, primo avvio, unione senza duplicati con un `log.json` esistente e `log.json` corrotto.
+- **Non verificati**: interfaccia nel browser (tile, pulsante +, testo preimpostato e focus della chat), chiamata a un modello reale per `create_dashboard_tile`.
+
+---
+
 ## [0.1] — 2026-10-10
 
 Modifiche rispetto al commit `5452ca4` (*feat(ai): integrate OpenAI support and update default user*). Obiettivi:

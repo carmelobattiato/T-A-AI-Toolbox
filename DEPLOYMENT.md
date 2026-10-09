@@ -2,7 +2,7 @@
 
 Questa guida descrive come eseguire **T&A AI Toolbox** come applicazione distribuita separata in **due container Docker indipendenti**:
 1. **Container 1 (Frontend)**: Nginx ultra-leggero che serve la webapp React e funge da reverse proxy verso il backend.
-2. **Container 2 (Backend + Database)**: API Express Node.js con storage persistente su file volume (`/app/data/db.json` e `/app/data/settings.json`).
+2. **Container 2 (Backend + Database)**: API Express Node.js con storage persistente su file volume (`/app/data/db.json`, `/app/data/log.json` e `/app/data/settings.json`).
 
 ---
 
@@ -70,9 +70,10 @@ L'applicazione sarà immediatamente raggiungibile a:
 
 ## 3. Persistenza dei Dati
 
-Tutte le modifiche apportate alla mappa (nuovi tool, nuove fasi, idee, esigenze, allegati, modifiche e cancellazioni) e la configurazione AI custom vengono salvate nel file:
+Tutte le modifiche apportate alla mappa (nuovi tool, nuove fasi, idee, esigenze, allegati, modifiche e cancellazioni) e la configurazione AI custom vengono salvate nei file:
 ```
-./data/db.json
+./data/db.json        (fasi, tool, WiP, esigenze, allegati, tile della dashboard)
+./data/log.json       (audit log delle modifiche, ultime 500 voci)
 ./data/settings.json
 ```
 Grazie al mapping volume `volumes: - ./data:/app/data` in `docker-compose.yml`, i dati **rimangono preservati permanentemente** anche quando i container vengono fermati, ricostruiti o aggiornati con una nuova versione di immagine.
@@ -137,6 +138,6 @@ La NetworkPolicy `frontend-from-ingress` ammette traffico verso il frontend solo
 Vincoli:
 
 * **Backend a una sola replica** (`strategy: Recreate`): i dati vivono in memoria e vengono riscritti su `db.json` a ogni modifica. Due repliche divergerebbero e si sovrascriverebbero il file. Ogni rilascio del backend comporta qualche decina di secondi di API non disponibili.
-* **Seed iniziale**: `data/db.json` e `data/settings.json` non sono versionati (`.gitignore`) né inclusi nell'immagine (`.dockerignore`). Al primo avvio il backend genera `db.json` (8 fasi e 12 elementi di esempio) e `settings.json` di default, senza chiavi. L'initContainer `seed-data` copia un eventuale `db.json` dell'immagine sul volume solo se `db.json` non esiste.
+* **Seed iniziale**: `data/db.json`, `data/log.json` e `data/settings.json` non sono versionati (`.gitignore`) né inclusi nell'immagine (`.dockerignore`). Al primo avvio il backend genera `db.json` (8 fasi e 12 elementi di esempio), `log.json` e `settings.json` di default, senza chiavi. Un vecchio `db.json` che contiene ancora gli audit log li passa a `log.json` al primo avvio. L'initContainer `seed-data` copia un eventuale `db.json` dell'immagine sul volume solo se `db.json` non esiste.
 * **PodDisruptionBudget**: `minAvailable: 1` sul backend evita che il cluster autoscaler lo sposti per consolidare i nodi; il frontend ha 2 repliche e `maxUnavailable: 1`.
 * **Assistente con provider OpenAI-compatibile**: usa le stesse funzioni del ramo Gemini (ricerca, creazione di tool/idee/esigenze/fasi, modifica, eliminazione) in formato `tools` OpenAI. Modifiche ed eliminazioni passano sempre dalla card di conferma: il modello non può confermare al posto dell'utente.

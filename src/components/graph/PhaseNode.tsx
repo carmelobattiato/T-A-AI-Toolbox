@@ -67,7 +67,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
               e.stopPropagation();
               setTopMenuOpen(!topMenuOpen);
             }}
-            title="Aggiungi Tool o Idea per questa fase"
+            title="Aggiungi Tool o WiP per questa fase"
             className="w-5 h-5 rounded-full bg-white border border-blue-300 shadow-sm hover:border-blue-500 hover:scale-110 transition-all flex items-center justify-center text-blue-600 hover:bg-blue-50"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -99,7 +99,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded hover:bg-purple-50 text-purple-700 transition-colors text-left"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Aggiungi Idea</span>
+                <span>Aggiungi WiP</span>
               </button>
             </div>
           )}

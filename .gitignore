@@ -14,6 +14,7 @@ k8s/manifests.yaml
 *.local.md
 
 # Dati runtime: database e settings con chiavi API, non versionare.
-# Alla prima esecuzione il backend genera db.json e settings.json di default.
+# Alla prima esecuzione il backend genera db.json, log.json e settings.json di default.
 data/db.json
+data/log.json
 data/settings.json

@@ -140,6 +140,26 @@ app.patch('/api/items/:id', (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/dashboard/tiles', (_req: Request, res: Response) => {
+  try {
+    res.json(db.getDashboardTiles());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/dashboard/tiles/:slot', (req: Request, res: Response) => {
+  try {
+    if (!db.deleteDashboardTile(Number(req.params.slot))) {
+      res.status(404).json({ error: 'Tile non trovato' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/items/:id', (req: Request, res: Response) => {
   try {
     const user = getUser(req);
