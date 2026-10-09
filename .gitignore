@@ -13,8 +13,8 @@ k8s/manifests.yaml
 # Note locali, specifiche dell'ambiente
 *.local.md
 
-# Dati runtime: database e settings con chiavi API, non versionare.
-# Alla prima esecuzione il backend genera db.json, log.json e settings.json di default.
-data/db.json
-data/log.json
-data/settings.json
+# Dati runtime (db.json, log.json, settings.json con chiavi API, e i relativi
+# .tmp / .corrupt-*): nessun .json in data/ va versionato. Alla prima esecuzione
+# il backend li genera di default; data/.gitkeep mantiene la cartella.
+data/*.json
+data/*.json.*
