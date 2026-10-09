@@ -33,7 +33,7 @@ Modifiche successive al rilascio `[0.1]`.
 
 - Gli audit log non stanno più in `db.json` ma in `data/log.json` (array JSON, voci più recenti per prime, massimo 500 come prima), scritto con la stessa scrittura atomica (`log.json.tmp` + rename). `db.json` contiene solo fasi, tool, WiP, esigenze, allegati e tile della dashboard e non viene più riscritto per il solo log. L'API `GET /api/audit-logs` e la finestra "Registro modifiche" non cambiano.
 - **Migrazione automatica** al primo avvio: se `db.json` contiene ancora `auditLogs`, le voci vengono unite a quelle di un eventuale `log.json` (senza duplicati, per `id`), scritte in `log.json` e solo dopo tolte da `db.json`. Se la scrittura di `log.json` fallisce i log restano in `db.json`. Primo avvio senza dati: `log.json` parte con la voce `log-init`. Un `log.json` illeggibile viene rinominato in `log.json.corrupt-<timestamp>` e si riparte da un file nuovo.
-- `data/log.json` è in `.gitignore` e `.dockerignore`, `backup-db.sh` lo copia insieme agli altri file e `DEPLOYMENT.md` e `README.md` lo citano. Sui volumi Kubernetes esistenti non serve alcun intervento: il file viene creato nella stessa cartella `data/`.
+- Regola generale: tutti i file `.json` in `data/` (e i loro `.tmp` e `.corrupt-*`) sono in `.gitignore` e `.dockerignore` (`data/*.json`, `data/*.json.*`); resta tracciato solo `data/.gitkeep`. `backup-db.sh` lo copia insieme agli altri file e `DEPLOYMENT.md` e `README.md` lo citano. Sui volumi Kubernetes esistenti non serve alcun intervento: il file viene creato nella stessa cartella `data/`.
 - Il backup manuale del volume descritto in "Operatività" copia solo `db.json`: per conservare anche la cronologia modifiche va copiato anche `log.json`.
 
 ### File toccati
