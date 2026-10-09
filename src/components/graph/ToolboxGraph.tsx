@@ -77,7 +77,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   onUpdateItemPosition,
 }) => {
   const { zoomIn, zoomOut, setViewport, fitView } = useReactFlow();
-  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = React.useState(false);
+  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = React.useState(true);
 
   // Selected item reference if any
   const focusedItem = useMemo(
@@ -111,9 +111,9 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       position: { x: -200, y: 110 },
       data: {
         category: 'TOOL_IDEA',
-        title: 'Tool e Idee',
+        title: 'Tool e WiP',
         subtitle: 'Asset e soluzioni di automazione T&A',
-        countLabel: `${totalTools} tool · ${totalIdeas} idee`,
+        countLabel: `${totalTools} tool · ${totalIdeas} WiP`,
       },
       draggable: false,
       selectable: false,
@@ -549,7 +549,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
                   <span className="w-2 h-2 rounded-full bg-blue-600" /> Tool
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-purple-600" /> Idee
+                  <span className="w-2 h-2 rounded-full bg-purple-600" /> WiP
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-600" /> Esigenze

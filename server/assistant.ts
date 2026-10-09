@@ -2,6 +2,16 @@ import { Type, FunctionDeclaration } from '@google/genai';
 import { db } from './store.ts';
 import { settingsStore, createGeminiClient } from './settingsStore.ts';
 import { PendingAction, AISettings } from '../src/types/index.ts';
+import {
+  DASHBOARD_SLOTS,
+  DASHBOARD_CHARTS,
+  DASHBOARD_GROUP_BY,
+  DASHBOARD_SORT_BY,
+  ITEM_TYPES,
+  LIST_DEFAULT_ROWS,
+  LIST_MAX_ROWS,
+  validateTile,
+} from '../src/utils/dashboard.ts';
 
 // Stored pending actions per user awaiting confirmation
 const pendingActionsByUser = new Map<string, PendingAction>();
@@ -161,6 +171,58 @@ const deleteItemDeclaration: FunctionDeclaration = {
   }
 };
 
+const createDashboardTileDeclaration: FunctionDeclaration = {
+  name: 'create_dashboard_tile',
+  description: `Configura un tile della dashboard (griglia di ${DASHBOARD_SLOTS} tile numerati da 1) definendo una query sui dati della mappa e come visualizzarla. Se lo slot è già occupato lo sostituisce. Chiamala direttamente con la configurazione migliore per la richiesta: il sistema mostra all'utente una card di anteprima da confermare, quindi non chiedere conferma a parole. Esempi: "le 3 esigenze con priorità più alta" = chart "list", itemTypes ["NEED"], sortBy "priority", order "asc", limit 3; "tool per cliente" = chart "bar", groupBy "customer", itemTypes ["TOOL"]; "quanti WiP creati negli ultimi 7 giorni" = chart "number", itemTypes ["IDEA"], where.createdWithinDays 7.`,
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      slot: { type: Type.NUMBER, description: `Numero del tile, da 1 a ${DASHBOARD_SLOTS}` },
+      title: { type: Type.STRING, description: 'Titolo breve del tile' },
+      chart: {
+        type: Type.STRING,
+        enum: DASHBOARD_CHARTS,
+        description: '"bar" = barre verticali, una per valore di groupBy (y = numero di elementi); "number" = un solo numero con il totale degli elementi; "list" = elenco ordinato dei singoli elementi (titolo, tipo, priorità), utile per classifiche e "ultimi N"'
+      },
+      itemTypes: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING, enum: ITEM_TYPES },
+        description: 'Quali elementi considerare: TOOL = tool, IDEA = WiP, NEED = esigenze. Se omesso, tutti'
+      },
+      where: {
+        type: Type.OBJECT,
+        description: 'Filtri facoltativi, tutti in AND. I testi corrispondono all\'inizio del valore, senza distinguere maiuscole',
+        properties: {
+          customer: { type: Type.STRING, description: 'Cliente' },
+          tag: { type: Type.STRING, description: 'Tag' },
+          phase: { type: Type.STRING, description: 'Titolo o ID della fase' },
+          owner: { type: Type.STRING, description: 'Owner' },
+          priorityMax: { type: Type.NUMBER, description: 'Solo elementi con priorità impostata e <= a questo valore (1 = più alta)' },
+          createdWithinDays: { type: Type.NUMBER, description: 'Solo elementi creati negli ultimi N giorni' },
+          generalizationRequired: { type: Type.BOOLEAN, description: 'Solo tool da generalizzare (true) o non da generalizzare (false)' }
+        }
+      },
+      groupBy: {
+        type: Type.STRING,
+        enum: DASHBOARD_GROUP_BY,
+        description: 'Solo per chart "bar" (obbligatorio): asse x. customer = clienti, tag, phase = fasi, type = tipo di elemento, owner, priority = priorità, month = mese di creazione'
+      },
+      sortBy: {
+        type: Type.STRING,
+        enum: DASHBOARD_SORT_BY,
+        description: 'Solo per chart "list": criterio di ordinamento (default createdAt). Con "priority" compaiono solo gli elementi con priorità impostata'
+      },
+      order: {
+        type: Type.STRING,
+        enum: ['asc', 'desc'],
+        description: 'Solo per chart "list". Per la priorità "asc" parte da 1 = la più alta; per le date "desc" parte dai più recenti'
+      },
+      limit: { type: Type.NUMBER, description: `Solo per chart "list": quanti elementi mostrare, da 1 a ${LIST_MAX_ROWS} (default ${LIST_DEFAULT_ROWS})` }
+    },
+    required: ['slot', 'title', 'chart']
+  }
+};
+
 const toolsList = [
   searchItemsDeclaration,
   listPhasesDeclaration,
@@ -170,7 +232,8 @@ const toolsList = [
   createNeedDeclaration,
   createPhaseDeclaration,
   updateItemDeclaration,
-  deleteItemDeclaration
+  deleteItemDeclaration,
+  createDashboardTileDeclaration
 ];
 
 // Same declarations for OpenAI-compatible endpoints: Gemini schema types are upper-case
@@ -404,6 +467,33 @@ function executeTool(name: string, args: any, user: string): any {
         message: `Fase "${created.title}" inserita alla posizione ${created.position}.`
       };
     }
+    case 'create_dashboard_tile': {
+      const validated = validateTile(args);
+      if ('error' in validated) return { error: validated.error };
+      const { tile } = validated;
+      const replaces = db.getDashboardTiles().find(t => t.slot === tile.slot)?.title;
+
+      if (!args.confirmed) {
+        const pending: PendingAction = {
+          id: `act-${Date.now()}`,
+          type: 'CREATE_TILE',
+          targetId: String(tile.slot),
+          targetTitle: tile.title,
+          payload: { fields: tile, replaces },
+          status: 'PENDING'
+        };
+        pendingActionsByUser.set(user, pending);
+        return {
+          requiresConfirmation: true,
+          pendingAction: pending,
+          message: `Confermi la configurazione del tile N°${tile.slot} "${tile.title}"?`
+        };
+      }
+
+      db.upsertDashboardTile(tile);
+      pendingActionsByUser.delete(user);
+      return { success: true, message: `Tile N°${tile.slot} "${tile.title}" configurato.` };
+    }
     case 'update_item': {
       const item = findItemByQuery(args.itemId);
       if (!item) return { error: `Elemento non trovato per "${args.itemId}"` };
@@ -530,6 +620,20 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
         reply: `✓ **"${created.title}"** è stato creato con successo.`,
         actionSummary: `Creato: "${created.title}"`,
         createdItem: created,
+        pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
+      };
+    }
+    if (actionToExec && actionToExec.type === 'CREATE_TILE') {
+      const validated = validateTile(actionToExec.payload?.fields);
+      if ('error' in validated) {
+        pendingActionsByUser.delete(user);
+        return { reply: `Non è stato possibile configurare il tile: ${validated.error}.` };
+      }
+      db.upsertDashboardTile(validated.tile);
+      pendingActionsByUser.delete(user);
+      return {
+        reply: `✓ Tile N°${validated.tile.slot} **"${validated.tile.title}"** configurato nella dashboard.`,
+        actionSummary: `Tile N°${validated.tile.slot} configurato: "${validated.tile.title}"`,
         pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
       };
     }
@@ -796,6 +900,7 @@ Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, crea
 Per creare, modificare o eliminare qualcosa DEVI chiamare la funzione corrispondente: non dichiarare mai di aver eseguito un'operazione senza averla chiamata.
 Modifiche ed eliminazioni non sono immediate: il sistema mostra all'utente una card di conferma. In quel caso di' all'utente di confermare dalla card, non che l'operazione è completata.
 Nei parametri phaseIds usa gli ID delle fasi (es. "phase-1").
+La dashboard ha ${DASHBOARD_SLOTS} tile numerati da 1. Quando l'utente chiede di configurare un tile (es. "tile N°3", "le 3 esigenze con priorità più alta") chiama SUBITO create_dashboard_tile con lo slot indicato, traducendo la richiesta in una query (itemTypes, where) e in un tipo di visualizzazione (chart: bar, number o list): non proporre alternative a parole e non chiedere conferma, perché il sistema mostra una card con l'anteprima che l'utente conferma. La priorità 1 è la più alta. Se manca lo slot, chiedilo. Solo se la richiesta non è proprio esprimibile con i parametri della funzione, spiega il limite.
 Rispondi in modo professionale, conciso e in lingua italiana, utilizzando formattazione markdown (elenchi puntati, **grassetto**, ecc.).
 Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze) e ${allPhases.length} fasi.
 Fasi di processo:
@@ -924,6 +1029,7 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
       const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
 L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
 Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, creare, modificare ed eliminare tool, idee ed esigenze.
+Per configurare un tile della dashboard (numerati da 1 a ${DASHBOARD_SLOTS}) USA subito create_dashboard_tile con lo slot indicato dall'utente, traducendo la richiesta in una query e in un tipo di visualizzazione (bar, number, list); la conferma è una card mostrata dal sistema.
 Quando l'utente chiede di eliminare o modificare un elemento, USA delete_item o update_item. Per l'eliminazione, richiedi SEMPRE conferma preventiva all'utente prima di cancellare definitivamente.
 Rispondi in modo professionale, conciso e in lingua italiana.
 Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze).`;

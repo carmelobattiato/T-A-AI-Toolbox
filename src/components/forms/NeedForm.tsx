@@ -34,6 +34,7 @@ export const NeedForm: React.FC<NeedFormProps> = ({
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [tags, setTags] = useState(formatList(initialData?.tags));
   const [customers, setCustomers] = useState(formatList(initialData?.customers));
+  const [priority, setPriority] = useState(initialData?.priority != null ? String(initialData.priority) : '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -56,6 +57,11 @@ export const NeedForm: React.FC<NeedFormProps> = ({
       alert('Seleziona almeno una fase correlata');
       return;
     }
+    const priorityValue = priority.trim() === '' ? null : Number(priority);
+    if (priorityValue !== null && (!Number.isInteger(priorityValue) || priorityValue < 1)) {
+      alert('La priorità deve essere un numero intero da 1 in su');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -71,6 +77,7 @@ export const NeedForm: React.FC<NeedFormProps> = ({
         notes: notes.trim() || undefined,
         tags: parseList(tags),
         customers: parseList(customers),
+        priority: priorityValue,
       });
       onClose();
     } catch (err: any) {
@@ -202,7 +209,7 @@ export const NeedForm: React.FC<NeedFormProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[1fr_1fr_7rem] gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Tag (separati da ;)</label>
               <input
@@ -220,6 +227,18 @@ export const NeedForm: React.FC<NeedFormProps> = ({
                 value={customers}
                 onChange={e => setCustomers(e.target.value)}
                 placeholder="es. Cliente A; Cliente B"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1" title="1 = priorità più alta">Priorità</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={priority}
+                onChange={e => setPriority(e.target.value)}
+                placeholder="1 = alta"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs"
               />
             </div>

@@ -204,7 +204,7 @@ docker compose up -d --build
 #### 3. Accesso all'applicazione
 - **Frontend Web UI**: [http://localhost:3000](http://localhost:3000)
 - **Backend API REST**: [http://localhost:5000/api](http://localhost:5000/api)
-- **Salvataggio Dati**: La cartella `./data/` sull'host conterrà `db.json` e `settings.json`.
+- **Salvataggio Dati**: La cartella `./data/` sull'host conterrà `db.json`, `log.json` (audit log) e `settings.json`.
 
 ---
 

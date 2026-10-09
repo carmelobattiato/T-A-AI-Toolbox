@@ -107,7 +107,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             </h2>
             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
               <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-md border ${theme.bg} ${theme.text} ${theme.border}`}>
-                {item.type === 'TOOL' ? 'Tool esistente' : item.type === 'IDEA' ? 'Idea' : 'Esigenza'}
+                {item.type === 'TOOL' ? 'Tool esistente' : item.type === 'IDEA' ? 'WiP' : 'Esigenza'}
               </span>
               {item.generalizationRequired && (
                 <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
@@ -363,6 +363,21 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             )}
 
             {/* Owner (all types, label matches the edit form) */}
+            {item.type !== 'TOOL' && (
+              <div>
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Priorità
+                </h4>
+                {item.priority != null ? (
+                  <span className="text-[11px] font-semibold px-2 py-1 rounded-md bg-slate-50 text-slate-800 border border-slate-200">
+                    P{item.priority}{item.priority === 1 ? ' · più alta' : ''}
+                  </span>
+                ) : (
+                  <p className="text-[11px] text-slate-400">Non impostata</p>
+                )}
+              </div>
+            )}
+
             {[
               { label: 'Tag', values: item.tags ?? [], prefix: '#' },
               { label: 'Clienti', values: item.customers ?? [], prefix: '' },

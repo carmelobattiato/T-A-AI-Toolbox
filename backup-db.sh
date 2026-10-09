@@ -10,6 +10,11 @@ if [ -f "data/db.json" ]; then
     echo "✓ Backup database completato: $BACKUP_DIR/db_$TIMESTAMP.json"
 fi
 
+if [ -f "data/log.json" ]; then
+    cp "data/log.json" "$BACKUP_DIR/log_$TIMESTAMP.json"
+    echo "✓ Backup audit log completato: $BACKUP_DIR/log_$TIMESTAMP.json"
+fi
+
 if [ -f "data/settings.json" ]; then
     cp "data/settings.json" "$BACKUP_DIR/settings_$TIMESTAMP.json"
     echo "✓ Backup impostazioni completato: $BACKUP_DIR/settings_$TIMESTAMP.json"

@@ -67,9 +67,9 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
           {item.title}
         </div>
 
-        {/* Badge Idea */}
+        {/* Badge WiP */}
         <span className="mt-1 text-[8.5px] font-medium px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
-          Idea
+          WiP
         </span>
 
         {/* Owner Avatar / Badge (same as ToolNode) */}
@@ -94,7 +94,7 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
       {isHovered && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 text-white text-xs rounded-lg py-1.5 px-2.5 shadow-xl pointer-events-none z-50 whitespace-nowrap border border-slate-700">
           <div className="font-semibold text-purple-300">{item.title}</div>
-          <div className="text-[10px] text-slate-400">Idea in valutazione</div>
+          <div className="text-[10px] text-slate-400">WiP in valutazione</div>
           <div className="text-[10px] text-slate-300 mt-0.5">
             Interessa: {coveredPhases.map(p => p.title).join(', ') || 'Nessuna fase'}
           </div>

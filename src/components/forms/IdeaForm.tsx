@@ -34,6 +34,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [tags, setTags] = useState(formatList(initialData?.tags));
   const [customers, setCustomers] = useState(formatList(initialData?.customers));
+  const [priority, setPriority] = useState(initialData?.priority != null ? String(initialData.priority) : '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -45,15 +46,20 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('Il titolo dell\'idea è obbligatorio');
+      alert('Il titolo del WiP è obbligatorio');
       return;
     }
     if (!problem.trim()) {
-      alert('Descrivi il problema che l\'idea affronta');
+      alert('Descrivi il problema che il WiP affronta');
       return;
     }
     if (selectedPhaseIds.length === 0) {
       alert('Seleziona almeno una fase');
+      return;
+    }
+    const priorityValue = priority.trim() === '' ? null : Number(priority);
+    if (priorityValue !== null && (!Number.isInteger(priorityValue) || priorityValue < 1)) {
+      alert('La priorità deve essere un numero intero da 1 in su');
       return;
     }
 
@@ -71,10 +77,11 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
         notes: notes.trim() || undefined,
         tags: parseList(tags),
         customers: parseList(customers),
+        priority: priorityValue,
       });
       onClose();
     } catch (err: any) {
-      alert(err.message || 'Errore nel salvataggio dell\'idea');
+      alert(err.message || 'Errore nel salvataggio del WiP');
     } finally {
       setIsSubmitting(false);
     }
@@ -88,7 +95,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
           <div className="flex items-center gap-2 text-purple-700">
             <Sparkles className="w-5 h-5" />
             <h3 className="font-bold text-base text-slate-900">
-              {initialData ? 'Modifica Idea' : 'Aggiungi Nuova Idea'}
+              {initialData ? 'Modifica WiP' : 'Aggiungi Nuovo WiP'}
             </h3>
           </div>
           <button
@@ -104,7 +111,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Titolo dell'Idea <span className="text-red-500">*</span>
+              Titolo del WiP <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -189,7 +196,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[1fr_1fr_7rem] gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Tag (separati da ;)</label>
               <input
@@ -207,6 +214,18 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
                 value={customers}
                 onChange={e => setCustomers(e.target.value)}
                 placeholder="es. Cliente A; Cliente B"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1" title="1 = priorità più alta">Priorità</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={priority}
+                onChange={e => setPriority(e.target.value)}
+                placeholder="1 = alta"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
               />
             </div>
@@ -249,7 +268,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
               disabled={isSubmitting}
               className="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-sm transition-colors disabled:opacity-50"
             >
-              {isSubmitting ? 'Salvataggio...' : initialData ? 'Salva Modifiche' : 'Crea Idea'}
+              {isSubmitting ? 'Salvataggio...' : initialData ? 'Salva Modifiche' : 'Crea WiP'}
             </button>
           </div>
         </form>

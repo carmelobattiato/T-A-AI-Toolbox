@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, PendingAction } from '../../types/index.ts';
 import { MarkdownContent } from './MarkdownContent.tsx';
+import { CHART_LABELS, GROUP_BY_LABELS, SORT_BY_LABELS, TYPE_LABELS, describeWhere } from '../../utils/dashboard.ts';
 import {
   Sparkles,
   Send,
@@ -33,14 +34,35 @@ const CREATE_FIELD_LABELS: Record<string, string> = {
   githubUrl: 'GitHub',
   catalogUrl: 'Catalog',
   demoUrl: 'Demo',
+  slot: 'Tile N°',
+  chart: 'Grafico',
+  groupBy: 'Asse x',
+  itemTypes: 'Elementi',
+  where: 'Filtri',
+  sortBy: 'Ordina per',
+  order: 'Ordine',
+  limit: 'Quanti mostrarne',
 };
+
+function formatFieldValue(key: string, value: unknown): string {
+  if (key === 'chart') return CHART_LABELS[value as keyof typeof CHART_LABELS] ?? String(value);
+  if (key === 'groupBy') return GROUP_BY_LABELS[value as keyof typeof GROUP_BY_LABELS] ?? String(value);
+  if (key === 'sortBy') return SORT_BY_LABELS[value as keyof typeof SORT_BY_LABELS] ?? String(value);
+  if (key === 'order') return value === 'asc' ? 'Crescente (priorità: dalla più alta)' : 'Decrescente';
+  if (key === 'where') return describeWhere(value as Parameters<typeof describeWhere>[0]);
+  if (key === 'itemTypes' && Array.isArray(value)) {
+    return value.map(t => TYPE_LABELS[t as keyof typeof TYPE_LABELS] ?? String(t)).join(', ');
+  }
+  return Array.isArray(value) ? value.join(', ') : String(value);
+}
 
 interface TAIAssistantProps {
   onRefreshData: () => Promise<void>;
   isDrawerOpen?: boolean;
+  presetRequest?: { text: string; nonce: number } | null;
 }
 
-export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDrawerOpen }) => {
+export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDrawerOpen, presetRequest }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -50,7 +72,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
       id: 'welcome',
       role: 'assistant',
       content:
-        'Ciao! Sono il **T&A Assistant**. Conosco l\'intero processo end-to-end del lavoro Technology & Architecture, i tool esistenti, le idee in valutazione e le esigenze aperte.\n\nPosso rispondere alle tue domande o **creare, modificare ed eliminare elementi** nella mappa (con conferma preventiva).',
+        'Ciao! Sono il **T&A Assistant**. Conosco l\'intero processo end-to-end del lavoro Technology & Architecture, i tool esistenti, i WiP in valutazione e le esigenze aperte.\n\nPosso rispondere alle tue domande o **creare, modificare ed eliminare elementi** nella mappa (con conferma preventiva).',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -74,6 +96,19 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
+
+  useEffect(() => {
+    if (!presetRequest) return;
+    setIsOpen(true);
+    setInput(presetRequest.text);
+    const frame = requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [presetRequest]);
 
   const handleSend = async (messageText?: string) => {
     const textToSend = messageText || input;
@@ -369,22 +404,27 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                             ? 'Conferma creazione elemento'
                             : msg.pendingAction.type === 'CREATE_PHASE'
                             ? 'Conferma creazione fase'
+                            : msg.pendingAction.type === 'CREATE_TILE'
+                            ? 'Conferma configurazione tile'
                             : 'Conferma modifica elemento'}
                         </span>
                       </div>
                       <div className="text-[11px] leading-snug text-slate-800 bg-white/70 p-2 rounded-lg border border-amber-200">
-                        {msg.pendingAction.type === 'CREATE_ITEM' || msg.pendingAction.type === 'CREATE_PHASE' ? (
+                        {msg.pendingAction.type === 'CREATE_ITEM' || msg.pendingAction.type === 'CREATE_PHASE' || msg.pendingAction.type === 'CREATE_TILE' ? (
                           <>
                             {Object.entries(msg.pendingAction.payload?.fields || {})
                               .filter(([key, value]) => key !== 'phaseIds' && key !== 'type' && value !== undefined && value !== '')
                               .map(([key, value]) => (
                                 <div key={key} className="mt-1 first:mt-0 text-slate-600">
                                   {CREATE_FIELD_LABELS[key] || key}:{' '}
-                                  <strong className="text-slate-900">
-                                    {Array.isArray(value) ? value.join(', ') : String(value)}
-                                  </strong>
+                                  <strong className="text-slate-900">{formatFieldValue(key, value)}</strong>
                                 </div>
                               ))}
+                            {msg.pendingAction.payload?.replaces && (
+                              <div className="mt-1 text-[10px] text-amber-700 font-medium">
+                                Sostituisce il tile attuale "{msg.pendingAction.payload.replaces}".
+                              </div>
+                            )}
                             {msg.pendingAction.payload?.phaseTitles?.length > 0 && (
                               <div className="mt-1 text-slate-600">
                                 Fasi: <strong className="text-slate-900">{msg.pendingAction.payload.phaseTitles.join(', ')}</strong>
@@ -430,6 +470,8 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                               ? 'Conferma eliminazione'
                               : msg.pendingAction.type === 'CREATE_ITEM' || msg.pendingAction.type === 'CREATE_PHASE'
                               ? 'Conferma creazione'
+                              : msg.pendingAction.type === 'CREATE_TILE'
+                              ? 'Conferma tile'
                               : 'Conferma modifica'}
                           </span>
                         </button>

@@ -1,15 +1,22 @@
 import fs from 'fs';
 import path from 'path';
-import { Phase, Item, Attachment, AuditLog } from '../src/types/index.ts';
+import { Phase, Item, Attachment, AuditLog, DashboardTile } from '../src/types/index.ts';
+import { DEFAULT_TILE } from '../src/utils/dashboard.ts';
 
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
+const LOG_FILE = path.resolve(DATA_DIR, 'log.json');
+const MAX_AUDIT_LOGS = 500;
 
 interface DatabaseSchema {
   phases: Phase[];
   items: Item[];
   attachments: Attachment[];
-  auditLogs: AuditLog[];
+  // Legacy: audit logs now live in log.json and are moved there on load
+  auditLogs?: AuditLog[];
+  dashboardTiles?: DashboardTile[];
+  // Set once the default tile has been offered, so deleting it keeps the slot free
+  dashboardDefaultsApplied?: boolean;
 }
 
 const DEFAULT_PHASES: Phase[] = [
@@ -156,6 +163,11 @@ const DEFAULT_PHASES: Phase[] = [
     updatedAt: new Date().toISOString(),
   }
 ];
+
+function cleanPriority(type: string, value: unknown): number | undefined {
+  if (type === 'TOOL') return undefined;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+}
 
 const DEFAULT_ITEMS: Item[] = [
   {
@@ -333,9 +345,70 @@ const DEFAULT_ITEMS: Item[] = [
 
 class DatabaseStore {
   private data: DatabaseSchema;
+  private auditLogs: AuditLog[];
 
   constructor() {
     this.data = this.loadData();
+    this.auditLogs = this.loadAuditLogs();
+  }
+
+  private writeAuditLogs(logs: AuditLog[]): boolean {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      // Atomic write: a crash mid-write must never leave a truncated log.json
+      const tmpFile = `${LOG_FILE}.tmp`;
+      fs.writeFileSync(tmpFile, JSON.stringify(logs, null, 2), 'utf-8');
+      fs.renameSync(tmpFile, LOG_FILE);
+      return true;
+    } catch (err) {
+      console.error('Failed to save log.json:', err);
+      return false;
+    }
+  }
+
+  private loadAuditLogs(): AuditLog[] {
+    const legacy = this.data.auditLogs;
+    let stored: AuditLog[] | null = null;
+
+    if (fs.existsSync(LOG_FILE)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(LOG_FILE, 'utf-8'));
+        if (!Array.isArray(parsed)) throw new Error('log.json is not an array');
+        stored = parsed;
+      } catch (e) {
+        console.warn('Error reading log.json, starting a new one:', e);
+        const corruptFile = `${LOG_FILE}.corrupt-${Date.now()}`;
+        fs.renameSync(LOG_FILE, corruptFile);
+        console.warn(`Unreadable log.json moved to ${corruptFile}`);
+      }
+    }
+
+    if (stored && !legacy) return stored;
+
+    // First run, or an older db.json that still embeds the logs: merge by id, newest first
+    const merged = new Map<string, AuditLog>();
+    for (const log of [...(stored ?? []), ...(legacy ?? [])]) merged.set(log.id, log);
+    const logs = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, MAX_AUDIT_LOGS);
+    if (!stored && !legacy) {
+      logs.push({
+        id: 'log-init',
+        user: 'system',
+        action: 'CREATE',
+        entityType: 'PHASE',
+        entityId: 'all',
+        payload: { count: DEFAULT_PHASES.length },
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Only drop the logs from db.json once log.json is safely on disk
+    if (this.writeAuditLogs(logs) && legacy) {
+      delete this.data.auditLogs;
+      this.saveData(this.data);
+    }
+    return logs;
   }
 
   private loadData(): DatabaseSchema {
@@ -350,6 +423,13 @@ class DatabaseStore {
           for (const item of parsed.items) {
             item.tags ??= [];
             item.customers ??= [];
+          }
+          parsed.dashboardTiles ??= [];
+          if (!parsed.dashboardDefaultsApplied) {
+            if (!parsed.dashboardTiles.some((t: DashboardTile) => t.slot === DEFAULT_TILE.slot)) {
+              parsed.dashboardTiles.push({ ...DEFAULT_TILE });
+            }
+            parsed.dashboardDefaultsApplied = true;
           }
           return parsed;
         }
@@ -368,17 +448,8 @@ class DatabaseStore {
       phases: DEFAULT_PHASES,
       items: DEFAULT_ITEMS.map(item => ({ ...item, tags: item.tags ?? [], customers: item.customers ?? [] })),
       attachments: [],
-      auditLogs: [
-        {
-          id: 'log-init',
-          user: 'system',
-          action: 'CREATE',
-          entityType: 'PHASE',
-          entityId: 'all',
-          payload: { count: DEFAULT_PHASES.length },
-          createdAt: new Date().toISOString(),
-        }
-      ]
+      dashboardTiles: [{ ...DEFAULT_TILE }],
+      dashboardDefaultsApplied: true,
     };
     this.saveData(initialData);
     return initialData;
@@ -566,6 +637,7 @@ class DatabaseStore {
       expectedBenefit: itemData.expectedBenefit,
       tags: itemData.tags ?? [],
       customers: itemData.customers ?? [],
+      priority: cleanPriority(itemData.type || 'TOOL', itemData.priority),
       positionX: itemData.positionX,
       positionY: itemData.positionY,
       createdBy: user,
@@ -589,6 +661,11 @@ class DatabaseStore {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
+    if ('priority' in updates) {
+      const priority = updates.priority === null ? undefined : cleanPriority(updated.type, updates.priority) ?? current.priority;
+      if (priority == null) delete updated.priority;
+      else updated.priority = priority;
+    }
 
     this.data.items[idx] = updated;
     this.addAuditLog(user, 'UPDATE', 'ITEM', id, updates);
@@ -597,6 +674,28 @@ class DatabaseStore {
       ...updated,
       attachments: this.data.attachments.filter(a => a.itemId === updated.id)
     };
+  }
+
+  // --- Dashboard tiles (one custom tile per slot) ---
+  getDashboardTiles(): DashboardTile[] {
+    return [...(this.data.dashboardTiles ?? [])].sort((a, b) => a.slot - b.slot);
+  }
+
+  upsertDashboardTile(tile: DashboardTile): DashboardTile {
+    const tiles = (this.data.dashboardTiles ??= []);
+    const idx = tiles.findIndex(t => t.slot === tile.slot);
+    if (idx === -1) tiles.push(tile);
+    else tiles[idx] = tile;
+    this.persist();
+    return tile;
+  }
+
+  deleteDashboardTile(slot: number): boolean {
+    const tiles = this.data.dashboardTiles ?? [];
+    if (!tiles.some(t => t.slot === slot)) return false;
+    this.data.dashboardTiles = tiles.filter(t => t.slot !== slot);
+    this.persist();
+    return true;
   }
 
   deleteItem(id: string, user = 'local.user'): boolean {
@@ -653,15 +752,15 @@ class DatabaseStore {
       payload,
       createdAt: new Date().toISOString(),
     };
-    this.data.auditLogs.unshift(log);
-    // Keep max 500 logs
-    if (this.data.auditLogs.length > 500) {
-      this.data.auditLogs = this.data.auditLogs.slice(0, 500);
+    this.auditLogs.unshift(log);
+    if (this.auditLogs.length > MAX_AUDIT_LOGS) {
+      this.auditLogs = this.auditLogs.slice(0, MAX_AUDIT_LOGS);
     }
+    this.writeAuditLogs(this.auditLogs);
   }
 
   getAuditLogs(): AuditLog[] {
-    return this.data.auditLogs;
+    return this.auditLogs;
   }
 }
 

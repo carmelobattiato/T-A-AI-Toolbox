@@ -49,6 +49,9 @@ export interface Item {
   tags?: string[];
   customers?: string[];
 
+  // Need and Idea only: 1 = highest priority
+  priority?: number | null;
+
   // Positioning
   positionX?: number;
   positionY?: number;
@@ -79,9 +82,37 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export type DashboardGroupBy = 'customer' | 'tag' | 'phase' | 'type' | 'owner' | 'priority' | 'month';
+
+export type DashboardSortBy = 'priority' | 'createdAt' | 'updatedAt' | 'title';
+
+// Filters of a tile query, combined with AND
+export interface DashboardWhere {
+  customer?: string;
+  tag?: string;
+  phase?: string;
+  owner?: string;
+  priorityMax?: number;
+  createdWithinDays?: number;
+  generalizationRequired?: boolean;
+}
+
+// A tile is a query (itemTypes, where, plus groupBy or sortBy/order/limit) and how to show it (chart)
+export interface DashboardTile {
+  slot: number;
+  title: string;
+  chart: 'bar' | 'number' | 'list';
+  itemTypes: ItemType[];
+  where?: DashboardWhere;
+  groupBy?: DashboardGroupBy;
+  sortBy?: DashboardSortBy;
+  order?: 'asc' | 'desc';
+  limit?: number;
+}
+
 export interface PendingAction {
   id: string;
-  type: 'DELETE_ITEM' | 'UPDATE_ITEM' | 'DELETE_PHASE' | 'CREATE_ITEM' | 'CREATE_PHASE';
+  type: 'DELETE_ITEM' | 'UPDATE_ITEM' | 'DELETE_PHASE' | 'CREATE_ITEM' | 'CREATE_PHASE' | 'CREATE_TILE';
   targetId: string;
   targetTitle: string;
   payload?: any;

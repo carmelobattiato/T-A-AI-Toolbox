@@ -5,27 +5,32 @@ import {
   X,
   Plus,
   History,
-  RotateCcw,
   Settings,
   Sparkles,
+  Map as MapIcon,
+  LayoutDashboard,
 } from 'lucide-react';
 
+export type AppView = 'map' | 'dashboard';
+
 interface HeaderProps {
+  view: AppView;
+  onViewChange: (view: AppView) => void;
   filters: FilterState;
   onFilterChange: (filters: FilterState) => void;
   onNewPhase: () => void;
   onOpenAuditLog: () => void;
-  onResetSeed: () => void;
   onOpenSettings: () => void;
   isCustomAiActive?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  view,
+  onViewChange,
   filters,
   onFilterChange,
   onNewPhase,
   onOpenAuditLog,
-  onResetSeed,
   onOpenSettings,
   isCustomAiActive = false,
 }) => {
@@ -61,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
           type="text"
           value={filters.searchQuery}
           onChange={e => onFilterChange({ ...filters, searchQuery: e.target.value })}
-          placeholder="Cerca tool, idee, esigenze..."
+          placeholder="Cerca tool, WiP, esigenze..."
           className="w-full pl-9 pr-8 py-2 rounded-full border border-slate-200 bg-slate-50/80 hover:bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-xs transition-all text-slate-800 placeholder-slate-400"
         />
         {filters.searchQuery && (
@@ -75,94 +80,28 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </div>
 
-      {/* Filter Toggles */}
-      <div className="hidden lg:flex items-center gap-2.5 shrink-0 text-xs font-semibold">
-        {/* Tool Filter Toggle */}
-        <button
-          type="button"
-          onClick={() => onFilterChange({ ...filters, showTools: !filters.showTools })}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
-            filters.showTools
-              ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-2xs'
-              : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <span>Tool</span>
-          <div
-            className={`w-7 h-4 rounded-full transition-colors relative flex items-center ${
-              filters.showTools ? 'bg-blue-600' : 'bg-slate-300'
-            }`}
-          >
-            <div
-              className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform transform ${
-                filters.showTools ? 'translate-x-3.5' : 'translate-x-0.5'
-              }`}
-            />
-          </div>
-        </button>
-
-        {/* Idee Filter Toggle */}
-        <button
-          type="button"
-          onClick={() => onFilterChange({ ...filters, showIdeas: !filters.showIdeas })}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
-            filters.showIdeas
-              ? 'bg-purple-50 border-purple-200 text-purple-700 shadow-2xs'
-              : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <span>Idee</span>
-          <div
-            className={`w-7 h-4 rounded-full transition-colors relative flex items-center ${
-              filters.showIdeas ? 'bg-purple-600' : 'bg-slate-300'
-            }`}
-          >
-            <div
-              className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform transform ${
-                filters.showIdeas ? 'translate-x-3.5' : 'translate-x-0.5'
-              }`}
-            />
-          </div>
-        </button>
-
-        {/* Esigenze Filter Toggle */}
-        <button
-          type="button"
-          onClick={() => onFilterChange({ ...filters, showNeeds: !filters.showNeeds })}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
-            filters.showNeeds
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-2xs'
-              : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <span>Esigenze</span>
-          <div
-            className={`w-7 h-4 rounded-full transition-colors relative flex items-center ${
-              filters.showNeeds ? 'bg-emerald-600' : 'bg-slate-300'
-            }`}
-          >
-            <div
-              className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform transform ${
-                filters.showNeeds ? 'translate-x-3.5' : 'translate-x-0.5'
-              }`}
-            />
-          </div>
-        </button>
-
-        {/* Solo da generalizzare Checkbox */}
-        <label className="flex items-center gap-1.5 ml-1 cursor-pointer select-none text-slate-600 hover:text-slate-900 transition-colors">
-          <input
-            type="checkbox"
-            checked={filters.onlyGeneralize}
-            onChange={e => onFilterChange({ ...filters, onlyGeneralize: e.target.checked })}
-            className="w-3.5 h-3.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
-          />
-          <span className="font-medium text-xs">Da generalizzare</span>
-        </label>
-      </div>
-
       {/* Global Actions Zone (No individual user profile - General app for all) */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* View switch: Mappa / Dashboard */}
+        <div className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-semibold">
+          {([
+            { id: 'map', label: 'Mappa', Icon: MapIcon },
+            { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+          ] as const).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onViewChange(id)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                view === id ? 'bg-white text-purple-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">{label}</span>
+            </button>
+          ))}
+        </div>
+
         {/* Settings AI Button */}
         <button
           type="button"
@@ -201,15 +140,6 @@ export const Header: React.FC<HeaderProps> = ({
           <History className="w-4 h-4" />
         </button>
 
-        {/* Reset Database Button */}
-        <button
-          type="button"
-          onClick={onResetSeed}
-          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-          title="Ripristina dati iniziali di test"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
       </div>
     </header>
   );
