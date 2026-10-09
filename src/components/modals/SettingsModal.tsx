@@ -1,5 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { AISettings } from '../../types/index.ts';
+
+type Provider = 'gemini' | 'openai';
+
+interface ProviderConfig {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  hasKey: boolean;
+}
+
+const MASKED_KEY = '••••••••••••••••';
+
+const EMPTY_CONFIG: Record<Provider, ProviderConfig> = {
+  gemini: { baseUrl: '', model: 'gemini-3.8-flash', apiKey: '', hasKey: false },
+  openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '', hasKey: false },
+};
 import {
   X,
   Settings,
@@ -27,12 +43,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini');
-  const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
-  const [model, setModel] = useState('gpt-4o-mini');
-  const [apiKey, setApiKey] = useState('');
+  const [provider, setProvider] = useState<Provider>('gemini');
+  const [configs, setConfigs] = useState<Record<Provider, ProviderConfig>>(EMPTY_CONFIG);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [hasStoredKey, setHasStoredKey] = useState(false);
+
+  const current = configs[provider];
+  const patchCurrent = (patch: Partial<ProviderConfig>) =>
+    setConfigs(prev => ({ ...prev, [provider]: { ...prev[provider], ...patch } }));
 
   const [isLoading, setIsLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -52,17 +69,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     fetch('/api/settings')
       .then(res => res.json())
-      .then((data: AISettings & { hasApiKey?: boolean }) => {
+      .then((data: AISettings & { hasApiKey?: boolean; hasGeminiApiKey?: boolean }) => {
         if (data.provider) setProvider(data.provider);
-        if (data.openaiBaseUrl) setBaseUrl(data.openaiBaseUrl);
-        if (data.openaiModel) setModel(data.openaiModel);
-        if (data.hasApiKey) {
-          setHasStoredKey(true);
-          setApiKey('••••••••••••••••');
-        } else {
-          setHasStoredKey(false);
-          setApiKey('');
-        }
+        setConfigs({
+          gemini: {
+            baseUrl: data.geminiBaseUrl ?? '',
+            model: data.geminiModel || EMPTY_CONFIG.gemini.model,
+            apiKey: data.hasGeminiApiKey ? MASKED_KEY : '',
+            hasKey: Boolean(data.hasGeminiApiKey),
+          },
+          openai: {
+            baseUrl: data.openaiBaseUrl || EMPTY_CONFIG.openai.baseUrl,
+            model: data.openaiModel || EMPTY_CONFIG.openai.model,
+            apiKey: data.hasApiKey ? MASKED_KEY : '',
+            hasKey: Boolean(data.hasApiKey),
+          },
+        });
       })
       .catch(err => console.error('Failed to load settings:', err));
   }, [isOpen]);
@@ -77,9 +99,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider,
-          openaiBaseUrl: baseUrl,
-          openaiModel: model,
-          openaiApiKey: apiKey === '••••••••••••••••' ? undefined : apiKey,
+          geminiBaseUrl: configs.gemini.baseUrl,
+          geminiModel: configs.gemini.model,
+          geminiApiKey: configs.gemini.apiKey === MASKED_KEY ? undefined : configs.gemini.apiKey,
+          openaiBaseUrl: configs.openai.baseUrl,
+          openaiModel: configs.openai.model,
+          openaiApiKey: configs.openai.apiKey === MASKED_KEY ? undefined : configs.openai.apiKey,
         }),
       });
 
@@ -102,12 +127,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const payload: Partial<AISettings> = {
         provider,
-        openaiBaseUrl: baseUrl.trim(),
-        openaiModel: model.trim(),
+        geminiBaseUrl: configs.gemini.baseUrl.trim(),
+        geminiModel: configs.gemini.model.trim(),
+        openaiBaseUrl: configs.openai.baseUrl.trim(),
+        openaiModel: configs.openai.model.trim(),
       };
 
-      if (apiKey && apiKey !== '••••••••••••••••') {
-        payload.openaiApiKey = apiKey.trim();
+      if (configs.gemini.apiKey && configs.gemini.apiKey !== MASKED_KEY) {
+        payload.geminiApiKey = configs.gemini.apiKey.trim();
+      }
+      if (configs.openai.apiKey && configs.openai.apiKey !== MASKED_KEY) {
+        payload.openaiApiKey = configs.openai.apiKey.trim();
       }
 
       const res = await fetch('/api/settings', {
@@ -232,21 +262,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* OpenAI Configuration Fields (Visible only or highlighted when OpenAI selected) */}
-          <div
-            className={`space-y-3.5 p-4 rounded-xl border transition-all ${
-              provider === 'openai'
-                ? 'bg-slate-50/70 border-blue-200 shadow-2xs'
-                : 'bg-slate-50/30 border-slate-200 opacity-60 pointer-events-none'
-            }`}
-          >
+          {/* Provider Configuration Fields (editable for the selected provider) */}
+          <div className="space-y-3.5 p-4 rounded-xl border bg-slate-50/70 border-blue-200 shadow-2xs transition-all">
             <div className="flex items-center justify-between pb-1 border-b border-slate-200/70">
               <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-blue-600" />
-                Parametri API OpenAI / Compatibile
+                {provider === 'gemini' ? 'Parametri API Google Gemini' : 'Parametri API OpenAI / Compatibile'}
               </span>
               <span className="text-[10px] text-slate-500 font-medium">
-                Supporta standard v1/chat/completions
+                {provider === 'gemini' ? 'Endpoint Google predefinito se vuoto' : 'Supporta standard v1/chat/completions'}
               </span>
             </div>
 
@@ -258,16 +282,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="relative">
                 <input
                   type="text"
-                  value={baseUrl}
-                  onChange={e => setBaseUrl(e.target.value)}
-                  placeholder="https://api.openai.com/v1"
+                  value={current.baseUrl}
+                  onChange={e => patchCurrent({ baseUrl: e.target.value })}
+                  placeholder={provider === 'gemini' ? 'https://generativelanguage.googleapis.com' : 'https://api.openai.com/v1'}
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 font-mono text-slate-800"
                 />
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
-                Esempi: <code className="text-slate-600">https://api.openai.com/v1</code>,{' '}
-                <code className="text-slate-600">http://localhost:11434/v1</code>,{' '}
-                <code className="text-slate-600">https://proxy-corp.internal/v1</code>
+                {provider === 'gemini' ? (
+                  <>Esempio proxy: <code className="text-slate-600">https://proxy-corp.internal</code></>
+                ) : (
+                  <>
+                    Esempi: <code className="text-slate-600">https://api.openai.com/v1</code>,{' '}
+                    <code className="text-slate-600">http://localhost:11434/v1</code>,{' '}
+                    <code className="text-slate-600">https://proxy-corp.internal/v1</code>
+                  </>
+                )}
               </p>
             </div>
 
@@ -279,32 +309,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="relative">
                 <input
                   type="text"
-                  value={model}
-                  onChange={e => setModel(e.target.value)}
-                  placeholder="gpt-4o-mini"
+                  value={current.model}
+                  onChange={e => patchCurrent({ model: e.target.value })}
+                  placeholder={provider === 'gemini' ? 'gemini-3.8-flash' : 'gpt-4o-mini'}
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 font-mono text-slate-800"
                 />
               </div>
-              <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto text-[10px]">
-                <span className="text-slate-400">Suggeriti:</span>
-                {['gpt-4o-mini', 'gpt-4o', 'qwen2.5:72b', 'llama3.3'].map(m => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setModel(m)}
-                    className="px-2 py-0.5 rounded bg-slate-200/60 hover:bg-slate-200 text-slate-700 font-mono transition-colors cursor-pointer"
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
+              {provider === 'openai' && (
+                <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto text-[10px]">
+                  <span className="text-slate-400">Suggeriti:</span>
+                  {['gpt-4o-mini', 'gpt-4o', 'qwen2.5:72b', 'llama3.3'].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => patchCurrent({ model: m })}
+                      className="px-2 py-0.5 rounded bg-slate-200/60 hover:bg-slate-200 text-slate-700 font-mono transition-colors cursor-pointer"
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* API Key */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
                 <span>API Key</span>
-                {hasStoredKey && (
+                {current.hasKey && (
                   <span className="text-[10px] text-emerald-600 font-medium">
                     ✓ Chiave memorizzata
                   </span>
@@ -313,9 +345,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="relative">
                 <input
                   type={showApiKey ? 'text' : 'password'}
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  placeholder={hasStoredKey ? '•••••••••••••••• (lascia invariato per non modificare)' : 'sk-...'}
+                  value={current.apiKey}
+                  onChange={e => patchCurrent({ apiKey: e.target.value })}
+                  placeholder={current.hasKey ? '•••••••••••••••• (lascia invariato per non modificare)' : provider === 'gemini' ? 'AIza...' : 'sk-...'}
                   className="w-full pl-3 pr-10 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 font-mono text-slate-800"
                 />
                 <button
@@ -331,7 +363,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
-                Per endpoint locali senza auth (es. Ollama), puoi inserire una stringa qualsiasi (es. "ollama").
+                {provider === 'gemini'
+                  ? 'Se vuota viene usata la variabile GEMINI_API_KEY del server.'
+                  : 'Per endpoint locali senza auth (es. Ollama), puoi inserire una stringa qualsiasi (es. "ollama").'}
               </p>
             </div>
 
@@ -340,7 +374,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 type="button"
                 onClick={handleTest}
-                disabled={isTesting || (!apiKey && !hasStoredKey)}
+                disabled={isTesting || (!current.apiKey && !current.hasKey)}
                 className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:border-slate-400 text-slate-700 hover:text-slate-900 text-xs font-semibold shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isTesting ? (

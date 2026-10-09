@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { GoogleGenAI } from '@google/genai';
 import { AISettings } from '../src/types/index.ts';
 
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
@@ -7,10 +8,24 @@ const SETTINGS_FILE = path.resolve(DATA_DIR, 'settings.json');
 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'gemini',
+  geminiBaseUrl: '',
+  geminiModel: 'gemini-3.8-flash',
+  geminiApiKey: '',
   openaiBaseUrl: 'https://api.openai.com/v1',
   openaiModel: 'gpt-4o-mini',
   openaiApiKey: '',
 };
+
+export function createGeminiClient(apiKey: string, baseUrl?: string): GoogleGenAI {
+  const cleanBaseUrl = baseUrl?.trim().replace(/\/+$/, '');
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: { 'User-Agent': 'aistudio-build' },
+      ...(cleanBaseUrl ? { baseUrl: cleanBaseUrl } : {}),
+    },
+  });
+}
 
 class SettingsStore {
   private settings: AISettings;
@@ -54,15 +69,49 @@ class SettingsStore {
     return { ...this.settings };
   }
 
-  public getClientSettings(): AISettings & { hasApiKey: boolean } {
+  public getGeminiApiKey(): string {
+    return this.settings.geminiApiKey || process.env.GEMINI_API_KEY || '';
+  }
+
+  public getClientSettings(): AISettings & { hasApiKey: boolean; hasGeminiApiKey: boolean } {
     return {
       provider: this.settings.provider,
+      geminiBaseUrl: this.settings.geminiBaseUrl,
+      geminiModel: this.settings.geminiModel,
+      geminiApiKey: this.settings.geminiApiKey ? '••••••••••••••••' : '',
+      hasGeminiApiKey: this.getGeminiApiKey().length > 3,
       openaiBaseUrl: this.settings.openaiBaseUrl,
       openaiModel: this.settings.openaiModel,
       openaiApiKey: this.settings.openaiApiKey ? '••••••••••••••••' : '',
       hasApiKey: Boolean(this.settings.openaiApiKey && this.settings.openaiApiKey.length > 3),
       isConfigured: Boolean(this.settings.provider === 'openai' && this.settings.openaiApiKey),
     };
+  }
+
+  public async testGemini(settingsToTest?: Partial<AISettings>): Promise<{ success: boolean; message: string; latencyMs?: number }> {
+    const s = { ...this.settings, ...settingsToTest };
+    const apiKey = s.geminiApiKey || process.env.GEMINI_API_KEY || '';
+    if (!apiKey) {
+      return { success: false, message: 'API Key mancante' };
+    }
+
+    const startTime = Date.now();
+    try {
+      const ai = createGeminiClient(apiKey, s.geminiBaseUrl);
+      await ai.models.generateContent({
+        model: s.geminiModel,
+        contents: 'Ping',
+        config: { maxOutputTokens: 5 },
+      });
+      const latencyMs = Date.now() - startTime;
+      return {
+        success: true,
+        message: `Connessione riuscita! Modello "${s.geminiModel}" pronto (${latencyMs}ms).`,
+        latencyMs,
+      };
+    } catch (err: any) {
+      return { success: false, message: `Errore endpoint: ${String(err.message || err).substring(0, 200)}` };
+    }
   }
 
   public async testOpenAi(settingsToTest?: Partial<AISettings>): Promise<{ success: boolean; message: string; latencyMs?: number }> {

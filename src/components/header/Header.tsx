@@ -46,6 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-[10px] text-slate-400 font-medium hidden sm:block">
             Mappa collaborativa Technology & Architecture
           </span>
+          <span className="text-[9px] text-slate-400 font-medium hidden sm:block">
+            developed by Carmelo Battiato - V.1.0.1
+          </span>
         </div>
       </div>
 
