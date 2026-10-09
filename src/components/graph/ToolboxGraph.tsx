@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
+import { matchesAge, matchesTagQuery } from '../../utils/filters.ts';
 import {
   ReactFlow,
   MiniMap,
@@ -214,6 +215,8 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       if (filters.onlyGeneralize && item.type === 'TOOL' && !item.generalizationRequired) {
         return false;
       }
+      if (!matchesAge(item, filters.maxAgeDays)) return false;
+      if (!matchesTagQuery(item, filters.tagQuery)) return false;
       return true;
     });
 

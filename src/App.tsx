@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Phase, Item, FilterState } from './types/index.ts';
 import { Header } from './components/header/Header.tsx';
+import { FilterBar } from './components/header/FilterBar.tsx';
 import { ToolboxGraph } from './components/graph/ToolboxGraph.tsx';
 import { PhaseDrawer } from './components/drawers/PhaseDrawer.tsx';
 import { ItemDrawer } from './components/drawers/ItemDrawer.tsx';
@@ -25,6 +26,8 @@ export default function App() {
     showIdeas: true,
     showNeeds: true,
     onlyGeneralize: false,
+    maxAgeDays: null,
+    tagQuery: '',
   });
 
   // Focus / Selection Mode (Spec 16-19)
@@ -339,6 +342,8 @@ export default function App() {
         isCustomAiActive={isCustomAiActive}
       />
 
+      <FilterBar filters={filters} onFilterChange={setFilters} />
+
       {/* Main Workspace Canvas Area */}
       <div className="flex-1 relative overflow-hidden flex">
         {isLoading ? (
@@ -555,7 +560,7 @@ export default function App() {
       {/* Toast Feedback */}
       {toast && (
         <div
-          className={`fixed top-20 right-6 z-50 px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-top-4 duration-200 ${
+          className={`fixed top-32 right-6 z-50 px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-top-4 duration-200 ${
             toast.type === 'success'
               ? 'bg-emerald-600 text-white shadow-emerald-500/20'
               : 'bg-red-600 text-white shadow-red-500/20'

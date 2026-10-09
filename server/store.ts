@@ -347,6 +347,10 @@ class DatabaseStore {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed.phases && parsed.items) {
+          for (const item of parsed.items) {
+            item.tags ??= [];
+            item.customers ??= [];
+          }
           return parsed;
         }
       }
@@ -362,7 +366,7 @@ class DatabaseStore {
 
     const initialData: DatabaseSchema = {
       phases: DEFAULT_PHASES,
-      items: DEFAULT_ITEMS,
+      items: DEFAULT_ITEMS.map(item => ({ ...item, tags: item.tags ?? [], customers: item.customers ?? [] })),
       attachments: [],
       auditLogs: [
         {
@@ -518,7 +522,9 @@ class DatabaseStore {
         (i.owner && i.owner.toLowerCase().includes(q)) ||
         (i.notes && i.notes.toLowerCase().includes(q)) ||
         (i.problem && i.problem.toLowerCase().includes(q)) ||
-        (i.requirements && i.requirements.toLowerCase().includes(q))
+        (i.requirements && i.requirements.toLowerCase().includes(q)) ||
+        (i.tags ?? []).some(t => t.toLowerCase().includes(q)) ||
+        (i.customers ?? []).some(c => c.toLowerCase().includes(q))
       );
     }
 
@@ -558,6 +564,8 @@ class DatabaseStore {
       desiredOutcome: itemData.desiredOutcome,
       requirements: itemData.requirements,
       expectedBenefit: itemData.expectedBenefit,
+      tags: itemData.tags ?? [],
+      customers: itemData.customers ?? [],
       positionX: itemData.positionX,
       positionY: itemData.positionY,
       createdBy: user,

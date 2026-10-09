@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatList, parseList } from '../../utils/lists.ts';
 import { Item, Phase } from '../../types/index.ts';
 import { X, Sparkles, Check } from 'lucide-react';
 
@@ -31,6 +32,8 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
   );
   const [owner, setOwner] = useState(initialData?.owner || 'Team T&A');
   const [notes, setNotes] = useState(initialData?.notes || '');
+  const [tags, setTags] = useState(formatList(initialData?.tags));
+  const [customers, setCustomers] = useState(formatList(initialData?.customers));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -66,6 +69,8 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
         phaseIds: selectedPhaseIds,
         owner: owner.trim() || undefined,
         notes: notes.trim() || undefined,
+        tags: parseList(tags),
+        customers: parseList(customers),
       });
       onClose();
     } catch (err: any) {
@@ -181,6 +186,29 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Tag (separati da ;)</label>
+              <input
+                type="text"
+                value={tags}
+                onChange={e => setTags(e.target.value)}
+                placeholder="es. aws; terraform"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Clienti (separati da ;)</label>
+              <input
+                type="text"
+                value={customers}
+                onChange={e => setCustomers(e.target.value)}
+                placeholder="es. Cliente A; Cliente B"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
+              />
             </div>
           </div>
 

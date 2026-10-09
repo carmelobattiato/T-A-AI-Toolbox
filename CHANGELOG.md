@@ -1,29 +1,99 @@
 # Changelog — T&A AI Toolbox
 
-## [Non rilasciato]
+## [Unreleased]
+
+---
+
+## [0.1] — 2026-10-10
 
 Modifiche rispetto al commit `5452ca4` (*feat(ai): integrate OpenAI support and update default user*). Obiettivi:
 
 - rendere l'applicazione eseguibile su Kubernetes in modo sicuro (container non-root, filesystem in sola lettura, dati su volume persistente, accesso solo tramite reverse proxy autenticato);
 - proteggere i dati da scritture interrotte;
 - dare all'assistente con provider OpenAI-compatibile le stesse capacità del ramo Gemini (function calling);
-- mostrare l'owner di idee ed esigenze, oltre che dei tool.
+- mostrare l'owner di idee ed esigenze, oltre che dei tool;
+- (v1.0.2) rendere la chat più usabile e sicura, filtrare la mappa per data, tag e cliente, configurare Gemini dall'interfaccia.
 
 ### Indice
 
-1. [Sintesi](#sintesi)
-2. [Persistenza](#persistenza)
-3. [Assistente](#assistente)
-4. [Interfaccia: owner su tutti gli elementi](#interfaccia-owner-su-tutti-gli-elementi)
-5. [Dipendenze, build e container](#dipendenze-build-e-container)
-6. [Kubernetes](#kubernetes)
-7. [Identità utente e reverse proxy](#identità-utente-e-reverse-proxy)
-8. [Documentazione](#documentazione)
-9. [Problemi risolti](#problemi-risolti)
-10. [Verifiche eseguite](#verifiche-eseguite)
-11. [Comportamenti da conoscere e limiti noti](#comportamenti-da-conoscere-e-limiti-noti)
-12. [Operatività](#operatività)
-13. [Possibili sviluppi](#possibili-sviluppi)
+1. [Novità v1.0.2](#novità-v102)
+2. [Sintesi](#sintesi)
+3. [Persistenza](#persistenza)
+4. [Assistente](#assistente)
+5. [Interfaccia: owner su tutti gli elementi](#interfaccia-owner-su-tutti-gli-elementi)
+6. [Dipendenze, build e container](#dipendenze-build-e-container)
+7. [Kubernetes](#kubernetes)
+8. [Identità utente e reverse proxy](#identità-utente-e-reverse-proxy)
+9. [Documentazione](#documentazione)
+10. [Problemi risolti](#problemi-risolti)
+11. [Verifiche eseguite](#verifiche-eseguite)
+12. [Comportamenti da conoscere e limiti noti](#comportamenti-da-conoscere-e-limiti-noti)
+13. [Operatività](#operatività)
+14. [Possibili sviluppi](#possibili-sviluppi)
+
+---
+
+### Novità v1.0.2
+
+**Chat**
+
+- Il campo di input è ora una `textarea`: **Invio** invia, **Maiusc+Invio** va a capo. Prima era un `input` a riga singola e non permetteva di scrivere più righe.
+- La `textarea` cresce fino a 5 righe visibili (`max-h-[100px]`) e poi scorre al suo interno, anche incollando testi lunghi; dopo l'invio torna a una riga.
+- **Conferma prima di creare**: `create_tool`, `create_idea`, `create_need`, `create_phase` e le creazioni del motore a regole non scrivono più subito. Preparano una `PendingAction` (`CREATE_ITEM` / `CREATE_PHASE`) e la chat mostra una card con l'anteprima dei dati (titolo, descrizione, fasi, owner, ecc.); l'elemento viene creato solo dopo "Conferma creazione", "Annulla" non crea nulla. Stesso meccanismo già usato per modifica ed eliminazione.
+
+**Filtri sulla mappa**
+
+- Nuova **barra filtri** sotto l'header (`FilterBar.tsx`):
+  - slider da "Tutto" a "Ultimi 30 gg" sulla data di creazione;
+  - campo unico per **tag e clienti**, separati da `;`, con filtro a ogni lettera: un elemento compare se un suo tag o cliente **inizia** con il testo digitato (`P`, `Po`, `Poste`; `Poste; Sog` cerca Poste e Sogei, con logica OR, senza distinguere maiuscole);
+  - "Azzera filtri".
+- Gli elementi fuori filtro vengono nascosti dalla mappa; si combinano in AND con i toggle Tool/Idee/Esigenze e con "Da generalizzare". La ricerca testuale continua a oscurare invece di nascondere.
+- Un elemento con data di creazione non valida non compare finché lo slider è attivo.
+
+**Tag e clienti**
+
+- Ogni Tool, Idea ed Esigenza ha `tags` e `customers` (array di testo), modificabili dai tre form come testo separato da `;` e mostrati nelle sezioni "Tag" e "Clienti" del pannello dettagli ("Nessuno" se vuote). La ricerca del server (`getItems`) li include.
+- **Retrocompatibile**: i vecchi `db.json` non cambiano. Al caricamento gli elementi senza i campi ottengono in memoria `[]`; il file su disco viene riscritto solo alla prima modifica. Un vecchio backend ignora i nuovi campi.
+
+**Motore AI (Gemini)**
+
+- La finestra "Configurazione Motore AI" permette di modificare anche per **Google Gemini** URL endpoint, modello e API key, con "Testa Connessione" attivo. Se la chiave è vuota si usa `GEMINI_API_KEY` del server; il campo URL è facoltativo e va indicato come solo host (es. `https://proxy-corp.internal`, senza `/v1beta`).
+- Nuovi campi in `settings.json`: `geminiBaseUrl`, `geminiModel`, `geminiApiKey` (mascherata nelle risposte API). Il client Gemini non è più creato all'avvio da `GEMINI_API_KEY` ma a ogni richiesta dalle impostazioni.
+- Il test di connessione ora riporta l'errore reale del provider (es. "API key not valid") invece di un messaggio generico.
+
+**Repository e versione**
+
+- `data/settings.json` (contiene le API key) e `data/db.json` (i dati dell'utente) sono ora in `.gitignore` e non più tracciati: GitHub blocca il push di una chiave GCP trovata in `settings.json`, e il database non va condiviso nel repository. Alla prima esecuzione, anche se la cartella `data/` non esiste, il backend crea `db.json` (8 fasi e 12 elementi di esempio, con `tags` e `customers` vuoti) e `settings.json` di default, senza chiavi. Resta `data/.gitkeep` perché la cartella esista in un checkout pulito (necessaria al bind mount di `docker-compose.yml` e al `COPY data/` del Dockerfile).
+- Nuovo `.dockerignore`: `data/db.json`, `data/settings.json` e `data/backups` non finiscono più nell'immagine (prima un build locale incorporava dati e chiavi della macchina). L'initContainer `seed-data` di Kubernetes copia `db.json` sul volume solo se presente nell'immagine; altrimenti il backend genera i dati di default. I volumi già popolati non cambiano. La cronologia precedente (commit `5452ca4`) contiene versioni passate di `data/settings.json`: verificare che non includano chiavi ancora valide e, se sì, ruotarle.
+- Il piè di pagina dell'header riporta "developed by Carmelo Battiato - V.1.0.2" (testo fisso in `Header.tsx`; `package.json` resta a `0.0.0`).
+
+**File toccati in v1.0.2**
+
+```text
+ .gitignore, .dockerignore               | + data/db.json, data/settings.json
+ data/.gitkeep                           | nuovo
+ DEPLOYMENT.md, k8s/manifests.template.yaml | seed iniziale senza db.json nell'immagine
+ server.ts, server/standalone.ts         | route settings e test per Gemini
+ server/assistant.ts                     | conferma creazioni, client Gemini da settings
+ server/settingsStore.ts                 | campi e test Gemini, createGeminiClient()
+ server/store.ts                         | tags/customers: normalizzazione, createItem, ricerca
+ src/App.tsx                             | FilterBar, stato filtri
+ src/components/chat/TAIAssistant.tsx    | textarea, card di conferma creazione
+ src/components/drawers/ItemDrawer.tsx   | sezioni Tag e Clienti
+ src/components/forms/*Form.tsx          | campi Tag e Clienti
+ src/components/graph/ToolboxGraph.tsx   | filtri età e tag/cliente
+ src/components/header/FilterBar.tsx     | nuovo
+ src/components/header/Header.tsx        | versione V.1.0.2
+ src/components/modals/SettingsModal.tsx | parametri Gemini editabili
+ src/types/index.ts                      | PendingAction, Item, FilterState, AISettings
+ src/utils/filters.ts, src/utils/lists.ts| nuovi
+```
+
+**Da sapere**
+
+- Nel ramo Gemini nativo il modello può passare `confirmed: true` a `executeTool`, che non lo rimuove (a differenza del ramo OpenAI): le conferme di creazione, modifica ed eliminazione possono quindi essere aggirate dal modello. Non corretto in questa versione.
+- L'assistente non conosce ancora `tags` e `customers`: gli elementi creati da chat li hanno vuoti.
+- Il filtro età conta al millisecondo: un elemento creato 10 giorni e 1 minuto fa non compare con lo slider a 10.
 
 ---
 
@@ -60,7 +130,7 @@ File toccati:
  src/utils/owner.ts                    | nuovo: getOwnerInitials()
 ```
 
-Non modificati: `server.ts` (entry point dev Express + Vite), `server/standalone.ts`, `src/App.tsx`, `data/db.json`, `bun.lock`.
+Non modificati in questo blocco (le modifiche successive sono in [Novità v1.0.2](#novità-v102)): `server.ts` (entry point dev Express + Vite), `server/standalone.ts`, `src/App.tsx`, `data/db.json`, `bun.lock`.
 
 ---
 
@@ -105,7 +175,7 @@ Prima, `handleOpenAIChat` faceva una sola chiamata `/chat/completions` senza `to
 
 - Aggiunto il parametro `owner` alla dichiarazione e `owner: args.owner || user` in `executeTool`, come già facevano `create_tool` e `create_idea`: un'esigenza creata da chat ha come owner l'utente che l'ha chiesta, salvo indicazione diversa.
 
-Invariati: ordine di valutazione (conferme/annullamenti → comandi con prefisso `elimina`/`cancella`/`rimuovi`/`rinomina` gestiti dal motore a regole → provider OpenAI → Gemini → motore a regole), ramo Gemini nativo (compreso il suo fallback), `executeTool` (salvo l'owner di `create_need`), `executeLocalIntents`.
+Invariati *in questo blocco* (le modifiche successive a `executeTool`, `executeLocalIntents` e al client Gemini sono in [Novità v1.0.2](#novità-v102)): ordine di valutazione (conferme/annullamenti → comandi con prefisso `elimina`/`cancella`/`rimuovi`/`rinomina` gestiti dal motore a regole → provider OpenAI → Gemini → motore a regole), ramo Gemini nativo (compreso il suo fallback), `executeTool` (salvo l'owner di `create_need`), `executeLocalIntents`.
 
 ---
 
@@ -158,7 +228,7 @@ Lo store non richiede modifiche: `createItem` salva già `owner` per qualsiasi t
 
 - `RUN chmod -R a+rX` su `package.json`, `package-lock.json`, `tsconfig.json`, `server/`, `src/`, `data/`. `COPY` conserva i permessi del checkout: con un umask restrittivo (file `660`) un utente non-root nel container non riesce a leggere i sorgenti (`EACCES` su `/app/package.json`).
 - `CMD` da `npx tsx server/standalone.ts` a `node_modules/.bin/tsx server/standalone.ts`: `npx` scrive in `~/.npm`, non disponibile con `readOnlyRootFilesystem`.
-- Base image invariata (`node:22-alpine`); `data/` continua a essere copiato nell'immagine e fa da **seed** per il volume (vedi initContainer).
+- Base image invariata (`node:22-alpine`); `data/` viene copiato nell'immagine. Dalla v1.0.2 `db.json` e `settings.json` ne sono esclusi (vedi [Novità v1.0.2](#novità-v102)): il seed è generato dal backend al primo avvio.
 
 **`Dockerfile.frontend`**
 
@@ -189,7 +259,7 @@ Lo store non richiede modifiche: `createItem` salva già `owner` per qualsiasi t
 | `Namespace` | dedicato all'applicazione |
 | `PersistentVolumeClaim/toolbox-data` | 1 Gi, `ReadWriteOnce`, montato su `/app/data` |
 | `Deployment/backend` | **1 replica, strategy `Recreate`** (il PVC RWO non può essere montato da due pod durante un rollout); `automountServiceAccountToken: false` |
-| ↳ initContainer `seed-data` | Stessa immagine del backend: se `/pvc/db.json` non esiste copia sul volume il `db.json` dell'immagine, altrimenti non fa nulla. Necessario perché il PVC montato su `/app/data` nasconde il `db.json` dell'immagine |
+| ↳ initContainer `seed-data` | Stessa immagine del backend: se `/pvc/db.json` non esiste e l'immagine ne contiene uno, lo copia sul volume; altrimenti non fa nulla (dalla v1.0.2 l'immagine non lo contiene e il backend genera i dati di default). Il PVC montato su `/app/data` nasconde comunque il contenuto di `data/` dell'immagine |
 | ↳ container `backend` | Porta 5000; env `NODE_ENV=production`, `PORT=5000`, `DATA_DIR=/app/data`; readiness e liveness su `GET /api/health`; requests 100m / 256Mi, limits 500m / 512Mi; `emptyDir` su `/tmp` (cache di compilazione di tsx) |
 | `Service/backend` | ClusterIP :5000. **Il nome è vincolato**: `nginx.conf` fa `proxy_pass http://backend:5000` |
 | `Deployment/frontend` | 2 repliche, RollingUpdate `maxSurge 1` / `maxUnavailable 0`; porta 8080; probe su `GET /`; requests 50m / 64Mi, limits 200m / 128Mi; `emptyDir` su `/tmp` e `/var/cache/nginx` |
@@ -226,7 +296,7 @@ Effetti sull'applicazione:
 
 ### Documentazione
 
-- **`DEPLOYMENT.md`**: nuova sezione **6. Deploy su Kubernetes** (build e push, generazione del manifest dal template, requisiti del reverse proxy, configurazione LLM, vincoli).
+- **`DEPLOYMENT.md`**: nuova sezione **6. Deploy su Kubernetes** (build e push, generazione del manifest dal template, requisiti del reverse proxy, configurazione LLM, vincoli). Dalla v1.0.2 la nota "Seed iniziale" descrive `db.json` e `settings.json` non versionati e generati al primo avvio.
 - **`CHANGELOG.md`**: questo file.
 
 ---
@@ -248,6 +318,11 @@ Effetti sull'applicazione:
 | Owner non visibile su idee ed esigenze | Sezione e badge renderizzati solo per i Tool | Owner e badge per tutti i tipi |
 | Email owner duplicata (`…@accenture.com@accenture.com`) | Il pannello aggiungeva sempre il dominio | Owner con `@` mostrato così com'è |
 | Iniziali diverse tra bolla (`MR`) e pannello (`MA`); `Team T&A` → `TT` | Due calcoli diversi | Helper unico `getOwnerInitials` |
+| Impossibile andare a capo nella chat; testi incollati su una riga sola | Campo `input` a riga singola | `textarea` con Maiusc+Invio e altezza fino a 5 righe (v1.0.2) |
+| Elementi creati da chat senza conferma, a differenza di modifica ed eliminazione | `create_*` e regole scrivevano subito | Card di anteprima e conferma (`CREATE_ITEM` / `CREATE_PHASE`) (v1.0.2) |
+| Gemini non configurabile dall'interfaccia | Solo `GEMINI_API_KEY` da ambiente e modello fisso | Endpoint, modello e API key in `settings.json`, test connessione attivo (v1.0.2) |
+| Test connessione Gemini: "API Key mancante" anche con la chiave inserita | `server.ts` (dev) instradava il test sempre al ramo OpenAI | Test instradato per provider anche in `server.ts` (v1.0.2) |
+| Push su GitHub rifiutato (secret scanning, chiave GCP) | `data/settings.json` tracciato e committato | `settings.json` e `db.json` in `.gitignore` e rimossi dal tracciamento (v1.0.2) |
 
 ---
 
@@ -275,6 +350,13 @@ Effetti sull'applicazione:
 
 - **Errori del provider**: key non valida (401) e host irraggiungibile → messaggio d'errore, nessuna scrittura; il comando diretto `elimina …` continua a funzionare.
 - **Owner**: esigenza creata da chat con `x-forwarded-user: mario.rossi@example.com` → owner `mario.rossi@example.com`; esigenza creata via REST con owner esplicito → owner conservato. Vecchia e nuova formula di email e iniziali confrontate sui dati esistenti: nessuna differenza per owner che sono nomi.
+- **v1.0.2** (verificato in locale con script e server reale, non da browser):
+  - `tsc --noEmit` e `npm run build` senza errori;
+  - il `db.json` precedente (13 elementi) si carica con `tags` e `customers` vuoti e il file su disco non cambia finché non si salva;
+  - primo avvio con cartella dati inesistente: vengono creati `db.json` (8 fasi, 12 elementi con `tags`/`customers` vuoti) e `settings.json` di default senza chiavi; creazione di un elemento con tag e cliente, riavvio, dati conservati, nessun `.tmp` residuo;
+  - filtro età (confine incluso/escluso), filtro tag e cliente per prefisso con più termini separati da `;`, ricerca server su tag e clienti;
+  - test connessione Gemini senza chiave → "API Key mancante"; con chiave non valida → errore reale del provider.
+  - **Non verificati**: interfaccia nel browser, build Docker con `.dockerignore`, `seed-data` modificato su un cluster, chiamata riuscita a Gemini con una chiave valida.
 - **Su un cluster Kubernetes**: pod pronti senza eventi di warning; NetworkPolicy verificate (un pod senza le label autorizzate non raggiunge né backend né frontend, il reverse proxy raggiunge il frontend); backend → endpoint LLM interno al cluster raggiungibile; rilascio del solo frontend senza disservizio, rilascio del backend con circa 20 s di indisponibilità e dati intatti.
 
 ---
@@ -298,8 +380,8 @@ Effetti sull'applicazione:
 
 - **Nessuna memoria di conversazione**: ogni messaggio è indipendente (vale per tutti i provider). Domande di follow-up come "e quali sono le sue fasi?" non hanno contesto.
 - Nel ramo OpenAI-compatibile il prompt di sistema include l'elenco completo di fasi ed elementi a ogni messaggio: il costo in token cresce con il grafo.
-- Il **ramo Gemini nativo** (`GEMINI_API_KEY`) conserva il vecchio fallback sul motore a regole.
-- Senza `GEMINI_API_KEY` il backend logga all'avvio `API key should be set when using the Gemini API.`: è atteso, non è un errore.
+- Il **ramo Gemini nativo** (chiave da impostazioni o da `GEMINI_API_KEY`) conserva il vecchio fallback sul motore a regole.
+- Dalla v1.0.2 il client Gemini non è creato all'avvio: il vecchio log `API key should be set when using the Gemini API.` non compare più.
 - I comandi che iniziano con `elimina`, `cancella`, `rimuovi`, `rinomina` sono gestiti dal motore a regole prima dell'LLM, indipendentemente dal provider.
 
 **Interfaccia**
@@ -309,6 +391,7 @@ Effetti sull'applicazione:
 
 **Repository**
 
+- Dalla v1.0.2 `data/db.json` non è nel repository: i dati dell'utente vivono solo nella cartella o nel volume locale, quindi il backup (`backup-db.sh`, vedi [Operatività](#operatività)) è l'unica copia di sicurezza. Il remote ha ancora `db.json` e vecchie versioni di `settings.json` nella cronologia dei commit.
 - `bun.lock` disallineato rispetto a `package.json` (vedi [Dipendenze, build e container](#dipendenze-build-e-container)).
 - `server.ts` (modalità dev Express + Vite) non è allineato a `server/standalone.ts`: non espone `/api/health` e ha un body limit diverso (10 MB contro 15 MB).
 - `README.md` non aggiornato su alcuni punti: allegati descritti in `data/uploads/`, frontend descritto come "Nginx Alpine", accesso descritto come aperto. Lo schema di `DEPLOYMENT.md` §1 riporta ancora "Porta 3000 (o 80)".
@@ -322,8 +405,8 @@ Effetti sull'applicazione:
 
 ```bash
 REG=registry.example.com/my-team
-BE=1.0.1   # tag backend: non riusare tag già pubblicati
-FE=1.0.1   # tag frontend
+BE=1.0.2   # tag backend: non riusare tag già pubblicati
+FE=1.0.2   # tag frontend
 
 docker build -t $REG/taai-toolbox-backend:$BE  -f Dockerfile.backend .
 docker build -t $REG/taai-toolbox-frontend:$FE -f Dockerfile.frontend .
@@ -339,7 +422,7 @@ kubectl -n <NAMESPACE> rollout status deploy/frontend
 
 Se cambia solo il frontend non c'è disservizio. Se cambia il backend, qualche decina di secondi di API non disponibili.
 
-**Rollback**: rigenerare il manifest con i tag precedenti e rifare `kubectl apply`. Il formato di `db.json` non è cambiato, quindi il rollback è compatibile con i dati.
+**Rollback**: rigenerare il manifest con i tag precedenti e rifare `kubectl apply`. Dalla v1.0.2 `db.json` ha in più `tags` e `customers` su ogni elemento: sono campi aggiuntivi e le versioni precedenti li ignorano, quindi il rollback è compatibile con i dati (i valori inseriti restano nel file ma non sono visibili).
 
 **Log e stato**
 
