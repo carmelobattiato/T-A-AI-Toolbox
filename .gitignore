@@ -12,3 +12,6 @@ k8s/manifests.yaml
 
 # Note locali, specifiche dell'ambiente
 *.local.md
+
+# Runtime settings con chiavi API: non versionare
+data/settings.json

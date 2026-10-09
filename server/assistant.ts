@@ -1,16 +1,7 @@
-import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
+import { Type, FunctionDeclaration } from '@google/genai';
 import { db } from './store.ts';
-import { settingsStore } from './settingsStore.ts';
+import { settingsStore, createGeminiClient } from './settingsStore.ts';
 import { PendingAction, AISettings } from '../src/types/index.ts';
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
 
 // Stored pending actions per user awaiting confirmation
 const pendingActionsByUser = new Map<string, PendingAction>();
@@ -246,6 +237,27 @@ function findItemByQuery(query: string) {
   return null;
 }
 
+function stageCreateItem(user: string, title: string, fields: any): any {
+  const resolvedPhaseIds: string[] = fields.phaseIds || [];
+  const pending: PendingAction = {
+    id: `act-${Date.now()}`,
+    type: 'CREATE_ITEM',
+    targetId: '',
+    targetTitle: title,
+    payload: {
+      fields,
+      phaseTitles: resolvedPhaseIds.map(id => db.getPhase(id)?.title).filter(Boolean)
+    },
+    status: 'PENDING'
+  };
+  pendingActionsByUser.set(user, pending);
+  return {
+    requiresConfirmation: true,
+    pendingAction: pending,
+    message: `Confermi la creazione di "${title}"?`
+  };
+}
+
 function executeTool(name: string, args: any, user: string): any {
   switch (name) {
     case 'search_items': {
@@ -289,8 +301,8 @@ function executeTool(name: string, args: any, user: string): any {
     }
     case 'create_tool': {
       const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid));
-      const created = db.createItem({
-        type: 'TOOL',
+      const fields = {
+        type: 'TOOL' as const,
         title: args.title,
         description: args.description || args.summary || '',
         summary: args.summary || args.description?.slice(0, 80) || '',
@@ -300,7 +312,13 @@ function executeTool(name: string, args: any, user: string): any {
         githubUrl: args.githubUrl,
         catalogUrl: args.catalogUrl,
         demoUrl: args.demoUrl,
-      }, user);
+      };
+
+      if (!args.confirmed) {
+        return stageCreateItem(user, args.title, fields);
+      }
+
+      const created = db.createItem(fields, user);
       return {
         success: true,
         createdItem: created,
@@ -309,15 +327,21 @@ function executeTool(name: string, args: any, user: string): any {
     }
     case 'create_idea': {
       const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid));
-      const created = db.createItem({
-        type: 'IDEA',
+      const fields = {
+        type: 'IDEA' as const,
         title: args.title,
         problem: args.problem,
         requirements: args.requirements,
         expectedBenefit: args.expectedBenefit,
         phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : ['phase-3'],
         owner: args.owner || user,
-      }, user);
+      };
+
+      if (!args.confirmed) {
+        return stageCreateItem(user, args.title, fields);
+      }
+
+      const created = db.createItem(fields, user);
       return {
         success: true,
         createdItem: created,
@@ -326,8 +350,8 @@ function executeTool(name: string, args: any, user: string): any {
     }
     case 'create_need': {
       const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid));
-      const created = db.createItem({
-        type: 'NEED',
+      const fields = {
+        type: 'NEED' as const,
         title: args.title,
         description: args.description || '',
         currentProcess: args.currentProcess,
@@ -335,7 +359,13 @@ function executeTool(name: string, args: any, user: string): any {
         desiredOutcome: args.desiredOutcome,
         phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : ['phase-1'],
         owner: args.owner || user,
-      }, user);
+      };
+
+      if (!args.confirmed) {
+        return stageCreateItem(user, args.title, fields);
+      }
+
+      const created = db.createItem(fields, user);
       return {
         success: true,
         createdItem: created,
@@ -343,12 +373,31 @@ function executeTool(name: string, args: any, user: string): any {
       };
     }
     case 'create_phase': {
-      const created = db.createPhase({
+      const fields = {
         title: args.title,
         description: args.description || '',
         targetIndex: typeof args.targetIndex === 'number' ? args.targetIndex : undefined,
         activities: args.activities || []
-      }, user);
+      };
+
+      if (!args.confirmed) {
+        const pending: PendingAction = {
+          id: `act-${Date.now()}`,
+          type: 'CREATE_PHASE',
+          targetId: '',
+          targetTitle: args.title,
+          payload: { fields },
+          status: 'PENDING'
+        };
+        pendingActionsByUser.set(user, pending);
+        return {
+          requiresConfirmation: true,
+          pendingAction: pending,
+          message: `Confermi la creazione della fase "${args.title}"?`
+        };
+      }
+
+      const created = db.createPhase(fields, user);
       return {
         success: true,
         createdPhase: created,
@@ -474,6 +523,26 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
         pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
       };
     }
+    if (actionToExec && actionToExec.type === 'CREATE_ITEM') {
+      const created = db.createItem(actionToExec.payload.fields, user);
+      pendingActionsByUser.delete(user);
+      return {
+        reply: `✓ **"${created.title}"** è stato creato con successo.`,
+        actionSummary: `Creato: "${created.title}"`,
+        createdItem: created,
+        pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
+      };
+    }
+    if (actionToExec && actionToExec.type === 'CREATE_PHASE') {
+      const created = db.createPhase(actionToExec.payload.fields, user);
+      pendingActionsByUser.delete(user);
+      return {
+        reply: `✓ Fase **"${created.title}"** inserita alla posizione ${created.position}.`,
+        actionSummary: `Fase creata: "${created.title}"`,
+        createdPhase: created,
+        pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
+      };
+    }
   }
 
   // 2. Intent: Cancella / Elimina elemento (e.g. "cancellami xxx", "elimina il tool Document AI", "cancella esigenza xxx")
@@ -548,19 +617,15 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       title = prompt.replace(/aggiungi (un'esigenza|esigenza) (a|alla fase|in)?/i, '').trim();
     }
 
-    const created = db.createItem({
-      type: 'NEED',
+    const fields = {
+      type: 'NEED' as const,
       title,
       description: prompt,
       desiredTool: 'Agente / Tool automatizzato',
       phaseIds: [targetPhase ? targetPhase.id : 'phase-1'],
-    }, user);
-
-    return {
-      reply: `Ho registrato l'esigenza **"${created.title}"** e l'ho associata alla fase **${targetPhase?.title || 'Assessment'}**. Il grafo è stato aggiornato in tempo reale.`,
-      actionSummary: `Esigenza creata: "${created.title}"`,
-      createdItem: created
     };
+    const staged = stageCreateItem(user, title, fields);
+    return { reply: staged.message, pendingAction: staged.pendingAction };
   }
 
   // 5. Intent: Aggiungi idea
@@ -581,20 +646,16 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       if (match && match[1]) title = match[1].trim();
     }
 
-    const created = db.createItem({
-      type: 'IDEA',
+    const fields = {
+      type: 'IDEA' as const,
       title,
       problem: prompt,
       requirements: 'Integrazione con cluster e protocollo MCP',
       phaseIds: targetPhases.map(ph => ph.id),
       owner: user,
-    }, user);
-
-    return {
-      reply: `Ho aggiunto l'idea **"${created.title}"** collegata a: ${targetPhases.map(ph => ph.title).join(', ')}.`,
-      actionSummary: `Idea creata: "${created.title}"`,
-      createdItem: created
     };
+    const staged = stageCreateItem(user, title, fields);
+    return { reply: staged.message, pendingAction: staged.pendingAction };
   }
 
   // 6. Intent: Aggiungi fase
@@ -612,17 +673,24 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       targetIdx = assess ? assess.position : 1;
     }
 
-    const created = db.createPhase({
+    const fields = {
       title,
       description: 'Attività preliminari di allineamento e discovery con gli stakeholder.',
       targetIndex: targetIdx,
       activities: ['Kick-off meeting', 'Interviste stakeholder', 'Raccolta accessi e prerequisiti']
-    }, user);
-
+    };
+    const pending: PendingAction = {
+      id: `act-${Date.now()}`,
+      type: 'CREATE_PHASE',
+      targetId: '',
+      targetTitle: title,
+      payload: { fields },
+      status: 'PENDING'
+    };
+    pendingActionsByUser.set(user, pending);
     return {
-      reply: `Ho inserito la fase **"${created.title}"** alla posizione ${created.position}. Tutte le fasi successive sono state rinumerate automaticamente.`,
-      actionSummary: `Fase inserita: "${created.title}"`,
-      createdPhase: created
+      reply: `Confermi la creazione della fase "${title}"?`,
+      pendingAction: pending
     };
   }
 
@@ -845,9 +913,12 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
     }
   }
 
-  // 2. If GEMINI_API_KEY is available, invoke Gemini 3.8 Flash with tools
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10) {
+  // 2. If a Gemini API key is configured, invoke Gemini with tools
+  const geminiKey = settingsStore.getGeminiApiKey();
+  if (geminiKey && geminiKey.length > 10) {
     try {
+      const { geminiBaseUrl, geminiModel } = settingsStore.getSettings();
+      const ai = createGeminiClient(geminiKey, geminiBaseUrl);
       const allPhases = db.getPhases();
       const allItems = db.getItems();
       const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
@@ -858,7 +929,7 @@ Rispondi in modo professionale, conciso e in lingua italiana.
 Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze).`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: geminiModel,
         contents: userMessage,
         config: {
           systemInstruction,
@@ -885,7 +956,7 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
         }
 
         const followUp = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: geminiModel,
           contents: [
             { role: 'user', parts: [{ text: userMessage }] },
             {

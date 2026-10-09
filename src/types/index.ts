@@ -78,7 +78,7 @@ export interface AuditLog {
 
 export interface PendingAction {
   id: string;
-  type: 'DELETE_ITEM' | 'UPDATE_ITEM' | 'DELETE_PHASE';
+  type: 'DELETE_ITEM' | 'UPDATE_ITEM' | 'DELETE_PHASE' | 'CREATE_ITEM' | 'CREATE_PHASE';
   targetId: string;
   targetTitle: string;
   payload?: any;
@@ -104,6 +104,9 @@ export interface FilterState {
 
 export interface AISettings {
   provider: 'gemini' | 'openai';
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiApiKey: string;
   openaiBaseUrl: string;
   openaiModel: string;
   openaiApiKey: string;

@@ -230,9 +230,14 @@ app.get('/api/settings', (_req: Request, res: Response) => {
 
 app.post('/api/settings', (req: Request, res: Response) => {
   try {
-    const { provider, openaiBaseUrl, openaiModel, openaiApiKey } = req.body;
+    const { provider, geminiBaseUrl, geminiModel, geminiApiKey, openaiBaseUrl, openaiModel, openaiApiKey } = req.body;
     const updates: any = {};
     if (provider) updates.provider = provider;
+    if (typeof geminiBaseUrl === 'string') updates.geminiBaseUrl = geminiBaseUrl;
+    if (typeof geminiModel === 'string') updates.geminiModel = geminiModel;
+    if (typeof geminiApiKey === 'string' && geminiApiKey !== '••••••••••••••••') {
+      updates.geminiApiKey = geminiApiKey;
+    }
     if (typeof openaiBaseUrl === 'string') updates.openaiBaseUrl = openaiBaseUrl;
     if (typeof openaiModel === 'string') updates.openaiModel = openaiModel;
     if (typeof openaiApiKey === 'string' && openaiApiKey !== '••••••••••••••••') {
@@ -248,7 +253,9 @@ app.post('/api/settings', (req: Request, res: Response) => {
 
 app.post('/api/settings/test', async (req: Request, res: Response) => {
   try {
-    const result = await settingsStore.testOpenAi(req.body);
+    const result = req.body.provider === 'gemini'
+      ? await settingsStore.testGemini(req.body)
+      : await settingsStore.testOpenAi(req.body);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });

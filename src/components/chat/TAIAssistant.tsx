@@ -16,6 +16,25 @@ import {
   Edit3
 } from 'lucide-react';
 
+const CREATE_FIELD_LABELS: Record<string, string> = {
+  title: 'Titolo',
+  description: 'Descrizione',
+  summary: 'Sintesi',
+  owner: 'Owner',
+  problem: 'Problema',
+  requirements: 'Requisiti',
+  expectedBenefit: 'Beneficio atteso',
+  currentProcess: 'Processo attuale',
+  desiredTool: 'Tool desiderato',
+  desiredOutcome: 'Risultato atteso',
+  generalizationRequired: 'Da generalizzare',
+  activities: 'Attività',
+  targetIndex: 'Posizione',
+  githubUrl: 'GitHub',
+  catalogUrl: 'Catalog',
+  demoUrl: 'Demo',
+};
+
 interface TAIAssistantProps {
   onRefreshData: () => Promise<void>;
   isDrawerOpen?: boolean;
@@ -37,6 +56,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,6 +67,13 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
       scrollToBottom();
     }
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
 
   const handleSend = async (messageText?: string) => {
     const textToSend = messageText || input;
@@ -338,22 +365,48 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                         <span>
                           {msg.pendingAction.type === 'DELETE_ITEM'
                             ? 'Conferma eliminazione elemento'
+                            : msg.pendingAction.type === 'CREATE_ITEM'
+                            ? 'Conferma creazione elemento'
+                            : msg.pendingAction.type === 'CREATE_PHASE'
+                            ? 'Conferma creazione fase'
                             : 'Conferma modifica elemento'}
                         </span>
                       </div>
                       <div className="text-[11px] leading-snug text-slate-800 bg-white/70 p-2 rounded-lg border border-amber-200">
-                        <div>
-                          Elemento target: <strong>{msg.pendingAction.targetTitle}</strong>
-                        </div>
-                        {msg.pendingAction.payload?.title && (
-                          <div className="mt-1 text-slate-600">
-                            Nuovo titolo: <strong className="text-slate-900">{msg.pendingAction.payload.title}</strong>
-                          </div>
-                        )}
-                        {msg.pendingAction.type === 'DELETE_ITEM' && (
-                          <div className="mt-1 text-[10px] text-red-600 font-medium">
-                            L'elemento e le sue relazioni verranno rimosse dalla mappa.
-                          </div>
+                        {msg.pendingAction.type === 'CREATE_ITEM' || msg.pendingAction.type === 'CREATE_PHASE' ? (
+                          <>
+                            {Object.entries(msg.pendingAction.payload?.fields || {})
+                              .filter(([key, value]) => key !== 'phaseIds' && key !== 'type' && value !== undefined && value !== '')
+                              .map(([key, value]) => (
+                                <div key={key} className="mt-1 first:mt-0 text-slate-600">
+                                  {CREATE_FIELD_LABELS[key] || key}:{' '}
+                                  <strong className="text-slate-900">
+                                    {Array.isArray(value) ? value.join(', ') : String(value)}
+                                  </strong>
+                                </div>
+                              ))}
+                            {msg.pendingAction.payload?.phaseTitles?.length > 0 && (
+                              <div className="mt-1 text-slate-600">
+                                Fasi: <strong className="text-slate-900">{msg.pendingAction.payload.phaseTitles.join(', ')}</strong>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              Elemento target: <strong>{msg.pendingAction.targetTitle}</strong>
+                            </div>
+                            {msg.pendingAction.payload?.title && (
+                              <div className="mt-1 text-slate-600">
+                                Nuovo titolo: <strong className="text-slate-900">{msg.pendingAction.payload.title}</strong>
+                              </div>
+                            )}
+                            {msg.pendingAction.type === 'DELETE_ITEM' && (
+                              <div className="mt-1 text-[10px] text-red-600 font-medium">
+                                L'elemento e le sue relazioni verranno rimosse dalla mappa.
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="flex items-center gap-2 pt-0.5">
@@ -373,7 +426,11 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                             <Check className="w-3.5 h-3.5" />
                           )}
                           <span>
-                            {msg.pendingAction.type === 'DELETE_ITEM' ? 'Conferma eliminazione' : 'Conferma modifica'}
+                            {msg.pendingAction.type === 'DELETE_ITEM'
+                              ? 'Conferma eliminazione'
+                              : msg.pendingAction.type === 'CREATE_ITEM' || msg.pendingAction.type === 'CREATE_PHASE'
+                              ? 'Conferma creazione'
+                              : 'Conferma modifica'}
                           </span>
                         </button>
                         <button
@@ -445,13 +502,20 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
               }}
               className="flex items-center gap-2"
             >
-              <input
-                type="text"
+              <textarea
+                ref={textareaRef}
+                rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
                 placeholder="Chiedi informazioni, oppure scrivi 'elimina [nome]' o 'modifica'..."
                 disabled={isLoading}
-                className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600 text-xs bg-slate-50 focus:bg-white text-slate-800 transition-colors"
+                className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600 text-xs bg-slate-50 focus:bg-white text-slate-800 transition-colors resize-none overflow-y-auto max-h-[100px] leading-snug"
               />
               <button
                 type="submit"
