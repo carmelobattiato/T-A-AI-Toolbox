@@ -363,6 +363,28 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             )}
 
             {/* Owner (all types, label matches the edit form) */}
+            {[
+              { label: 'Tag', values: item.tags ?? [], prefix: '#' },
+              { label: 'Clienti', values: item.customers ?? [], prefix: '' },
+            ].map(section => (
+              <div key={section.label}>
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {section.label}
+                </h4>
+                {section.values.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {section.values.map(value => (
+                      <span key={value} className="text-[11px] font-medium px-2 py-1 rounded-md bg-slate-50 text-slate-800 border border-slate-200">
+                        {section.prefix}{value}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400">Nessuno</p>
+                )}
+              </div>
+            ))}
+
             <div>
               <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                 {item.type === 'TOOL' ? 'Owner / POC' : item.type === 'IDEA' ? 'Proponente / Autore' : 'Owner / Referente'}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatList, parseList } from '../../utils/lists.ts';
 import { Item, Phase } from '../../types/index.ts';
 import { X, Wrench, Check } from 'lucide-react';
 
@@ -35,6 +36,8 @@ export const ToolForm: React.FC<ToolFormProps> = ({
   const [catalogUrl, setCatalogUrl] = useState(initialData?.catalogUrl || '');
   const [demoUrl, setDemoUrl] = useState(initialData?.demoUrl || '');
   const [notes, setNotes] = useState(initialData?.notes || '');
+  const [tags, setTags] = useState(formatList(initialData?.tags));
+  const [customers, setCustomers] = useState(formatList(initialData?.customers));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -68,6 +71,8 @@ export const ToolForm: React.FC<ToolFormProps> = ({
         catalogUrl: catalogUrl.trim() || undefined,
         demoUrl: demoUrl.trim() || undefined,
         notes: notes.trim() || undefined,
+        tags: parseList(tags),
+        customers: parseList(customers),
       });
       onClose();
     } catch (err: any) {
@@ -172,6 +177,30 @@ export const ToolForm: React.FC<ToolFormProps> = ({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Tag e Clienti */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Tag (separati da ;)</label>
+              <input
+                type="text"
+                value={tags}
+                onChange={e => setTags(e.target.value)}
+                placeholder="es. aws; terraform"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Clienti (separati da ;)</label>
+              <input
+                type="text"
+                value={customers}
+                onChange={e => setCustomers(e.target.value)}
+                placeholder="es. Cliente A; Cliente B"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+              />
             </div>
           </div>
 

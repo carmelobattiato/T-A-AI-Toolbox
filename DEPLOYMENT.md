@@ -137,6 +137,6 @@ La NetworkPolicy `frontend-from-ingress` ammette traffico verso il frontend solo
 Vincoli:
 
 * **Backend a una sola replica** (`strategy: Recreate`): i dati vivono in memoria e vengono riscritti su `db.json` a ogni modifica. Due repliche divergerebbero e si sovrascriverebbero il file. Ogni rilascio del backend comporta qualche decina di secondi di API non disponibili.
-* **Seed iniziale**: il PVC copre il `data/db.json` dell'immagine; l'initContainer `seed-data` lo copia sul volume solo se `db.json` non esiste.
+* **Seed iniziale**: `data/db.json` e `data/settings.json` non sono versionati (`.gitignore`) né inclusi nell'immagine (`.dockerignore`). Al primo avvio il backend genera `db.json` (8 fasi e 12 elementi di esempio) e `settings.json` di default, senza chiavi. L'initContainer `seed-data` copia un eventuale `db.json` dell'immagine sul volume solo se `db.json` non esiste.
 * **PodDisruptionBudget**: `minAvailable: 1` sul backend evita che il cluster autoscaler lo sposti per consolidare i nodi; il frontend ha 2 repliche e `maxUnavailable: 1`.
 * **Assistente con provider OpenAI-compatibile**: usa le stesse funzioni del ramo Gemini (ricerca, creazione di tool/idee/esigenze/fasi, modifica, eliminazione) in formato `tools` OpenAI. Modifiche ed eliminazioni passano sempre dalla card di conferma: il modello non può confermare al posto dell'utente.

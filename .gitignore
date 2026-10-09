@@ -13,5 +13,7 @@ k8s/manifests.yaml
 # Note locali, specifiche dell'ambiente
 *.local.md
 
-# Runtime settings con chiavi API: non versionare
+# Dati runtime: database e settings con chiavi API, non versionare.
+# Alla prima esecuzione il backend genera db.json e settings.json di default.
+data/db.json
 data/settings.json

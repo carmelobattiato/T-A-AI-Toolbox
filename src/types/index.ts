@@ -46,6 +46,9 @@ export interface Item {
   requirements?: string;
   expectedBenefit?: string;
 
+  tags?: string[];
+  customers?: string[];
+
   // Positioning
   positionX?: number;
   positionY?: number;
@@ -100,6 +103,8 @@ export interface FilterState {
   showIdeas: boolean;
   showNeeds: boolean;
   onlyGeneralize: boolean;
+  maxAgeDays: number | null;
+  tagQuery: string;
 }
 
 export interface AISettings {

@@ -46,8 +46,10 @@
 #   - replicas: 1 e strategy Recreate — NON scalare. Due repliche divergono e
 #     si sovrascrivono db.json a vicenda; anche le conferme pendenti
 #     dell'assistente vivono in memoria nel singolo pod.
-#   - Il PVC copre il db.json incluso nell'immagine: l'initContainer `seed-data`
-#     lo copia sul volume solo al primo avvio (se db.json non esiste).
+#   - Il PVC copre l'eventuale db.json incluso nell'immagine: l'initContainer
+#     `seed-data` lo copia sul volume solo al primo avvio (se db.json non esiste).
+#     Dalla v1.0.2 db.json non è versionato né nell'immagine: senza seed il
+#     backend genera da solo i dati di default.
 #   - PDB minAvailable 1: senza, il cluster autoscaler può spostare il pod quando
 #     consolida i nodi (decine di secondi di disservizio, più a lungo se il disco
 #     è zonale e serve un nodo nella stessa zona).
@@ -117,8 +119,10 @@ spec:
             - |
               if [ -f /pvc/db.json ]; then
                 echo "db.json già presente sul volume, seed saltato"
-              else
+              elif [ -f /app/data/db.json ]; then
                 cp /app/data/db.json /pvc/db.json && echo "db.json iniziale copiato sul volume"
+              else
+                echo "nessun db.json nell'immagine: il backend genera i dati di default al primo avvio"
               fi
           securityContext:
             runAsNonRoot: true
