@@ -64,7 +64,7 @@ docker compose up -d --build
 
 L'applicazione sarà immediatamente raggiungibile a:
 * **Frontend Web App**: `http://localhost:3000`
-* **Backend API REST**: `http://localhost:5000/api`
+* **Backend API REST**: `http://localhost:5000/api` (pubblicato solo su `127.0.0.1` dal compose: in produzione si passa da nginx e dal reverse proxy)
 
 ---
 
@@ -141,3 +141,10 @@ Vincoli:
 * **Seed iniziale**: tutti i file `.json` di `data/` (`db.json`, `log.json`, `settings.json`) non sono versionati (`.gitignore`) né inclusi nell'immagine (`.dockerignore`). Al primo avvio il backend genera `db.json` (8 fasi e 12 elementi di esempio), `log.json` e `settings.json` di default, senza chiavi. Un vecchio `db.json` che contiene ancora gli audit log li passa a `log.json` al primo avvio. L'initContainer `seed-data` copia un eventuale `db.json` dell'immagine sul volume solo se `db.json` non esiste.
 * **PodDisruptionBudget**: `minAvailable: 1` sul backend evita che il cluster autoscaler lo sposti per consolidare i nodi; il frontend ha 2 repliche e `maxUnavailable: 1`.
 * **Assistente con provider OpenAI-compatibile**: usa le stesse funzioni del ramo Gemini (ricerca, creazione di tool/idee/esigenze/fasi, modifica, eliminazione) in formato `tools` OpenAI. Modifiche ed eliminazioni passano sempre dalla card di conferma: il modello non può confermare al posto dell'utente.
+
+## Variabili di sicurezza (facoltative)
+
+* `ALLOWED_LLM_HOSTS`: host ammessi per gli endpoint dei provider AI, separati da virgola (es. `litellm.internal,api.openai.com`). Se impostata, test, salvataggio e chiamate dell'assistente accettano solo quegli host e la chiave `GEMINI_API_KEY` dell'ambiente può essere inviata solo a questi host o all'endpoint Google predefinito. Vuota = nessuna restrizione.
+* `CORS_ORIGIN`: origini autorizzate a chiamare il backend dal browser, separate da virgola. Di default non si inviano intestazioni CORS (l'app è same-origin).
+* La chiave salvata nelle impostazioni vale solo per l'endpoint con cui è stata salvata: cambiando l'URL del provider va reinserita.
+* nginx invia la Content-Security-Policy in sola segnalazione (`Content-Security-Policy-Report-Only`): controlla la console del browser e, se non compaiono violazioni, rinomina l'header in `Content-Security-Policy` in `docker/nginx.conf`.

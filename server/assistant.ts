@@ -1,6 +1,6 @@
 import { Type, FunctionDeclaration } from '@google/genai';
 import { db } from './store.ts';
-import { settingsStore, createGeminiClient } from './settingsStore.ts';
+import { settingsStore, createGeminiClient, checkEndpoint } from './settingsStore.ts';
 import { PendingAction, AISettings } from '../src/types/index.ts';
 import {
   DASHBOARD_SLOTS,
@@ -893,6 +893,8 @@ export async function handleAssistantChat(
   if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
     baseUrl = 'https://' + baseUrl;
   }
+  const endpointError = checkEndpoint(baseUrl);
+  if (endpointError) throw new Error(endpointError);
 
   const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
 L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
@@ -1023,6 +1025,8 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
   if (geminiKey && geminiKey.length > 10) {
     try {
       const { geminiBaseUrl, geminiModel } = settingsStore.getSettings();
+      const endpointError = checkEndpoint(geminiBaseUrl);
+      if (endpointError) throw new Error(endpointError);
       const ai = createGeminiClient(geminiKey, geminiBaseUrl);
       const allPhases = db.getPhases();
       const allItems = db.getItems();
@@ -1051,7 +1055,10 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
 
         for (const call of functionCalls) {
           if (!call.name) continue;
-          const result = executeTool(call.name, call.args, user);
+          // The model can never confirm on the user's behalf (same rule as the OpenAI branch)
+          const args = { ...(call.args ?? {}) };
+          delete args.confirmed;
+          const result = executeTool(call.name, args, user);
           toolResponses.push(result);
           if (result && (result as any).message) {
             actionSummary = (result as any).message;

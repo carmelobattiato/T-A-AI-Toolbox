@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Phase, Item, Attachment, AuditLog, DashboardTile } from '../src/types/index.ts';
 import { DEFAULT_TILE } from '../src/utils/dashboard.ts';
+import { toSafeHref } from '../src/utils/url.ts';
 
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
@@ -163,6 +164,16 @@ const DEFAULT_PHASES: Phase[] = [
     updatedAt: new Date().toISOString(),
   }
 ];
+
+// Fields the server owns: a client can never overwrite them through create or update requests
+function withoutServerFields<T extends object>(data: T): T {
+  const copy: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+  for (const field of ['id', 'createdAt', 'createdBy', 'isCore', 'attachments']) delete copy[field];
+  return copy as T;
+}
+
+const ATTACHMENT_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg'];
+const MAX_ATTACHMENT_CHARS = 7_500_000; // ~5 MB of base64, the limit the UI enforces
 
 function cleanPriority(type: string, value: unknown): number | undefined {
   if (type === 'TOOL') return undefined;
@@ -500,12 +511,12 @@ class DatabaseStore {
     }
 
     const newPhase: Phase = {
-      id: phaseData.id || `phase-${Date.now()}`,
+      id: `phase-${Date.now()}`,
       title: phaseData.title || 'Nuova Fase',
       description: phaseData.description || '',
       activities: phaseData.activities || [],
       position: newPos,
-      isCore: phaseData.isCore ?? false,
+      isCore: false,
       createdBy: user,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -517,7 +528,8 @@ class DatabaseStore {
     return newPhase;
   }
 
-  updatePhase(id: string, updates: Partial<Phase>, user = 'local.user'): Phase | null {
+  updatePhase(id: string, rawUpdates: Partial<Phase>, user = 'local.user'): Phase | null {
+    const updates = withoutServerFields(rawUpdates);
     const index = this.data.phases.findIndex(p => p.id === id);
     if (index === -1) return null;
 
@@ -617,16 +629,16 @@ class DatabaseStore {
 
   createItem(itemData: Partial<Item>, user = 'local.user'): Item {
     const newItem: Item = {
-      id: itemData.id || `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       type: itemData.type || 'TOOL',
       title: itemData.title || 'Nuovo Elemento',
       summary: itemData.summary || '',
       description: itemData.description || '',
       notes: itemData.notes || '',
       phaseIds: itemData.phaseIds || [],
-      githubUrl: itemData.githubUrl,
-      catalogUrl: itemData.catalogUrl,
-      demoUrl: itemData.demoUrl,
+      githubUrl: toSafeHref(itemData.githubUrl),
+      catalogUrl: toSafeHref(itemData.catalogUrl),
+      demoUrl: toSafeHref(itemData.demoUrl),
       owner: itemData.owner,
       generalizationRequired: !!itemData.generalizationRequired,
       problem: itemData.problem,
@@ -651,7 +663,11 @@ class DatabaseStore {
     return newItem;
   }
 
-  updateItem(id: string, updates: Partial<Item>, user = 'local.user'): Item | null {
+  updateItem(id: string, rawUpdates: Partial<Item>, user = 'local.user'): Item | null {
+    const updates = withoutServerFields(rawUpdates);
+    for (const field of ['githubUrl', 'catalogUrl', 'demoUrl'] as const) {
+      if (field in updates) updates[field] = toSafeHref(updates[field]);
+    }
     const idx = this.data.items.findIndex(i => i.id === id);
     if (idx === -1) return null;
 
@@ -712,6 +728,19 @@ class DatabaseStore {
 
   // --- Attachments ---
   addAttachment(itemId: string, attachmentData: { fileName: string; mimeType: string; data: string }): Attachment {
+    const { fileName, mimeType, data } = attachmentData;
+    if (typeof fileName !== 'string' || typeof mimeType !== 'string' || typeof data !== 'string') {
+      throw new Error('Allegato non valido');
+    }
+    if (!ATTACHMENT_MIME_TYPES.includes(mimeType) || !/^data:image\/(png|jpe?g);base64,/i.test(data)) {
+      throw new Error('Sono consentiti solo file PNG, JPG o JPEG');
+    }
+    if (data.length > MAX_ATTACHMENT_CHARS) {
+      throw new Error('Il file supera il limite di 5 MB');
+    }
+    if (!this.data.items.some(i => i.id === itemId)) {
+      throw new Error('Elemento non trovato');
+    }
     const existing = this.data.attachments.filter(a => a.itemId === itemId);
     if (existing.length >= 3) {
       throw new Error('Massimo 3 allegati consentiti per elemento');
@@ -720,9 +749,9 @@ class DatabaseStore {
     const newAttachment: Attachment = {
       id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       itemId,
-      fileName: attachmentData.fileName,
-      mimeType: attachmentData.mimeType,
-      data: attachmentData.data,
+      fileName: fileName.slice(0, 200),
+      mimeType,
+      data,
       createdAt: new Date().toISOString(),
     };
 

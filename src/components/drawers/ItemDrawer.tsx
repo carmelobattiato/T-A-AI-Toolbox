@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toSafeHref } from '../../utils/url.ts';
 import { Item, Phase, Attachment } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
 import { getOwnerInitials } from '../../utils/owner.ts';
@@ -243,9 +244,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     Link e Repository
                   </h4>
                   <div className="space-y-1.5">
-                    {item.githubUrl && (
+                    {toSafeHref(item.githubUrl) && (
                       <a
-                        href={item.githubUrl}
+                        href={toSafeHref(item.githubUrl)}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-xs text-slate-700 border border-slate-200 transition-colors"
@@ -257,9 +258,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                         <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
                       </a>
                     )}
-                    {item.catalogUrl && (
+                    {toSafeHref(item.catalogUrl) && (
                       <a
-                        href={item.catalogUrl}
+                        href={toSafeHref(item.catalogUrl)}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-xs text-slate-700 border border-slate-200 transition-colors"
@@ -271,9 +272,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                         <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
                       </a>
                     )}
-                    {item.demoUrl && (
+                    {toSafeHref(item.demoUrl) && (
                       <a
-                        href={item.demoUrl}
+                        href={toSafeHref(item.demoUrl)}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-xs text-slate-700 border border-slate-200 transition-colors"

@@ -4,6 +4,44 @@
 
 ---
 
+## [0.3] — 2026-10-10
+
+Correzioni di sicurezza, senza cambiare formato dei dati né API usate dal frontend.
+
+### Sicurezza
+
+- **Chiavi API delle impostazioni.** La chiave salvata vale solo per l'endpoint con cui è stata salvata. Prima il test di connessione usava la chiave memorizzata verso qualsiasi URL passato nella richiesta, e `POST /api/settings` accettava qualsiasi URL: chi raggiungeva il backend poteva farsi inviare la chiave (OpenAI e Gemini, compresa `GEMINI_API_KEY`) da un host a sua scelta. Ora:
+  - il test con un URL diverso da quello salvato richiede di reinserire la chiave;
+  - salvare un URL diverso senza una chiave nuova **azzera la chiave** di quel provider (la finestra Impostazioni avvisa: "Hai cambiato l'URL ... reinseriscila");
+  - la chiave `GEMINI_API_KEY` dell'ambiente viene usata solo con l'endpoint Google predefinito o con un host in `ALLOWED_LLM_HOSTS`;
+  - sono ammessi solo URL `http`/`https` (`ftp://`, `file://`, `javascript:` e URL senza host sono rifiutati) e il test non segue più i redirect.
+- **`ALLOWED_LLM_HOSTS`** (facoltativa, elenco di host separati da virgola, vuota = nessuna restrizione): se impostata, test, salvataggio e chiamate dell'assistente accettano solo quegli host. Gli endpoint interni al cluster continuano a funzionare: non si bloccano gli IP privati.
+- **Conferme dell'assistente sul ramo Gemini.** Il modello poteva passare `confirmed: true` e saltare la card di conferma; ora il flag viene rimosso prima di eseguire la funzione, come già sul ramo OpenAI. Chiude il limite annotato in `[0.1]` e `[0.2]`.
+- **CORS.** Il backend non invia più `Access-Control-Allow-Origin: *`: l'app è same-origin (Vite in sviluppo, nginx in produzione). Una pagina web aperta nel browser dell'utente non può più chiamare l'API. Chi serve il frontend da un'altra origine imposta `CORS_ORIGIN` (elenco di origini separate da virgola). Il codice è nel nuovo `server/cors.ts`, condiviso dai due entry point.
+- **docker-compose.** Il backend è pubblicato solo su `127.0.0.1:5000`: prima `5000:5000` lo esponeva sull'host senza autenticazione, scavalcando nginx e il reverse proxy.
+- **Campi riservati.** `PATCH` e `POST` su elementi e fasi non possono più impostare `id`, `createdAt`, `createdBy`, `isCore` e `attachments` (gli id si generano sempre sul server). Prima un `PATCH` con `{"id": ...}` poteva duplicare gli id e corrompere i dati. Nota: `isCore` non ha mai protetto le fasi dalla cancellazione, quindi nessun comportamento di cancellazione è cambiato.
+- **Allegati.** Il server accetta solo PNG/JPG/JPEG con `data` nel formato `data:image/...;base64,`, fino a ~5 MB (gli stessi limiti della UI), su elementi esistenti e con campi di tipo testo. Rifiuta HTML, SVG, URL esterni e tipi non stringa.
+- **Link dei Tool** (`githubUrl`, `catalogUrl`, `demoUrl`): il server tiene solo URL `http(s)` (un indirizzo senza schema diventa `https://...`, gli altri schemi vengono scartati) e anche il pannello dettagli mostra solo link sicuri. React 19 blocca già `javascript:`; questo è un secondo livello di difesa.
+- **nginx.** Aggiunti `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `server_tokens off`. La Content-Security-Policy parte in modalità **sola segnalazione** (`Content-Security-Policy-Report-Only`) per non rompere nulla: dopo aver controllato la console del browser si può passare a `Content-Security-Policy`.
+- **Igiene.** `settings.json` viene scritto con permessi `0600`; gli errori 500 mostrano al client un messaggio generico (il dettaglio resta nel log del server); `/api/health` non espone più `dataDir`; il nome utente da `x-forwarded-user` è ripulito dai caratteri di controllo e limitato a 128 caratteri; `backup-db.sh` usa `umask 077`; `.dockerignore` esclude `.env*` (tranne `.env.example`), `.git` e `backups/`, e `backups/` è in `.gitignore`.
+
+### Da sapere
+
+- Chi cambia l'URL di un provider deve reinserire la chiave (con `ALLOWED_LLM_HOSTS` impostata, gli host non in elenco non sono più ammessi).
+- Nessuna autenticazione applicativa: la protezione resta il reverse proxy con le NetworkPolicy. Non fatte in questa versione, perché richiedono decisioni o dati dell'ambiente: segreto condiviso tra proxy e backend, elenco di amministratori per le impostazioni, `confirmedAction` legata all'azione salvata dal server, NetworkPolicy in uscita per il backend (blocco dei metadati cloud).
+- Azioni tue: revocare il token GitHub incollato in chat, ruotare la chiave GCP che era in `data/settings.json` (rilevata da GitHub nel commit locale `2aed024`, ora non più nella cronologia ma ancora nel reflog fino a un `gc`) e, se serve, eseguire una scansione dei segreti sulla cronologia.
+
+### Verifiche eseguite
+
+- `tsc --noEmit` e `npm run build` senza errori.
+- Con server finti che registrano gli header ricevuti: test e salvataggio verso un host diverso non consegnano nessuna chiave (OpenAI e Gemini, compresa quella d'ambiente); il test legittimo sull'URL salvato usa la chiave salvata; URL cambiato più chiave digitata invia solo la chiave digitata; salvare un URL diverso azzera la chiave; lo stesso URL con maiuscole o slash la mantiene; URL non validi rifiutati; con `ALLOWED_LLM_HOSTS` gli host non in elenco sono bloccati e la chiave d'ambiente va solo a un host in elenco.
+- Un finto Gemini che emette `delete_item` con `confirmed: true` produce solo la card (elemento ancora presente).
+- CORS: nessuna intestazione per un'origine ostile, preflight `204` senza header, con `CORS_ORIGIN` l'origine indicata è ammessa e le altre no.
+- Campi riservati non sovrascrivibili (13 id unici dopo un `PATCH` con `id`), `id`/`isCore` del client ignorati in creazione, URL e allegati (PNG valido accettato; HTML, SVG, URL esterno, tipi non stringa, elemento inesistente e oltre 5 MB rifiutati), nome utente limitato a 128 caratteri, `settings.json` con permessi `0600`, `/api/health` senza `dataDir`, errore interno generico, priorità e tile invariati.
+- **Non verificati**: build Docker, nginx (`nginx -t` e la CSP nel browser) e `docker-compose` (Docker e nginx non sono disponibili su questa macchina), interfaccia nel browser (avviso nella finestra Impostazioni, link e allegati), modello Gemini reale.
+
+---
+
 ## [0.2] — 2026-10-10
 
 Modifiche successive al rilascio `[0.1]`.
