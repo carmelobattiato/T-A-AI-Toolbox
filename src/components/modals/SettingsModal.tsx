@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AISettings } from '../../types/index.ts';
+import { normalizeBaseUrl } from '../../utils/url.ts';
 
 type Provider = 'gemini' | 'openai';
 
@@ -46,6 +47,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [provider, setProvider] = useState<Provider>('gemini');
   const [configs, setConfigs] = useState<Record<Provider, ProviderConfig>>(EMPTY_CONFIG);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [loadedUrls, setLoadedUrls] = useState<Record<Provider, string>>({ gemini: '', openai: '' });
 
   const current = configs[provider];
   const patchCurrent = (patch: Partial<ProviderConfig>) =>
@@ -71,6 +73,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       .then(res => res.json())
       .then((data: AISettings & { hasApiKey?: boolean; hasGeminiApiKey?: boolean }) => {
         if (data.provider) setProvider(data.provider);
+        setLoadedUrls({ gemini: data.geminiBaseUrl ?? '', openai: data.openaiBaseUrl ?? '' });
         setConfigs({
           gemini: {
             baseUrl: data.geminiBaseUrl ?? '',
@@ -146,7 +149,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error('Errore durante il salvataggio');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Errore durante il salvataggio');
+      }
 
       setSaveSuccess(true);
       if (onSaved) onSaved();
@@ -362,6 +368,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   )}
                 </button>
               </div>
+              {current.apiKey === MASKED_KEY &&
+                normalizeBaseUrl(current.baseUrl) !== normalizeBaseUrl(loadedUrls[provider]) && (
+                  <p className="text-[10px] text-amber-700 font-medium mt-1">
+                    Hai cambiato l'URL: la chiave memorizzata vale solo per l'endpoint salvato, reinseriscila.
+                  </p>
+                )}
               <p className="text-[10px] text-slate-400 mt-1">
                 {provider === 'gemini'
                   ? 'Se vuota viene usata la variabile GEMINI_API_KEY del server.'

@@ -158,6 +158,9 @@ spec:
               value: "5000"
             - name: DATA_DIR
               value: /app/data
+            # Facoltative (vedi DEPLOYMENT.md, "Variabili di sicurezza"):
+            # - name: ALLOWED_LLM_HOSTS
+            #   value: "<HOST_LLM_INTERNO>"
           readinessProbe:
             httpGet:
               path: /api/health

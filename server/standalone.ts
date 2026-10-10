@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { db } from './store.ts';
 import { settingsStore } from './settingsStore.ts';
+import { corsMiddleware } from './cors.ts';
+import { getUser, internalError } from './http.ts';
 import { handleAssistantChat } from './assistant.ts';
 
 dotenv.config();
@@ -14,34 +16,14 @@ const DATA_DIR = process.env.DATA_DIR || './data';
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
-// Full CORS headers
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-forwarded-user'
-  );
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-    return;
-  }
-  next();
-});
+app.use(corsMiddleware);
 
-// Helper to get general user or SSO header
-function getUser(req: Request): string {
-  const forwarded = req.headers['x-forwarded-user'] as string;
-  if (forwarded && forwarded.trim()) return forwarded.trim();
-  return 'Team T&A';
-}
 
 // Healthcheck endpoint
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'ta-toolbox-backend',
-    dataDir: DATA_DIR,
     timestamp: new Date().toISOString(),
   });
 });
@@ -52,7 +34,7 @@ app.get('/api/phases', (_req: Request, res: Response) => {
     const phases = db.getPhases();
     res.json(phases);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -90,7 +72,7 @@ app.delete('/api/phases/:id', (req: Request, res: Response) => {
     }
     res.json({ success: true, message: 'Fase eliminata' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -105,7 +87,7 @@ app.get('/api/items', (req: Request, res: Response) => {
     });
     res.json(items);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -118,7 +100,7 @@ app.get('/api/items/:id', (req: Request, res: Response) => {
     }
     res.json(item);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -150,7 +132,7 @@ app.get('/api/dashboard/tiles', (_req: Request, res: Response) => {
   try {
     res.json(db.getDashboardTiles());
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -162,7 +144,7 @@ app.delete('/api/dashboard/tiles/:slot', (req: Request, res: Response) => {
     }
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -176,7 +158,7 @@ app.delete('/api/items/:id', (req: Request, res: Response) => {
     }
     res.json({ success: true, message: 'Elemento eliminato' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -204,7 +186,7 @@ app.delete('/api/attachments/:id', (req: Request, res: Response) => {
     }
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -213,7 +195,7 @@ app.get('/api/audit-logs', (_req: Request, res: Response) => {
   try {
     res.json(db.getAuditLogs());
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
@@ -235,7 +217,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     console.error('Chat error:', err);
-    res.status(500).json({ error: err.message || 'Errore interno assistente' });
+    internalError(res, err, 'Errore interno assistente');
   }
 });
 
@@ -244,27 +226,13 @@ app.get('/api/settings', (_req: Request, res: Response) => {
   try {
     res.json(settingsStore.getClientSettings());
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalError(res, err);
   }
 });
 
 app.post('/api/settings', (req: Request, res: Response) => {
   try {
-    const { provider, geminiBaseUrl, geminiModel, geminiApiKey, openaiBaseUrl, openaiModel, openaiApiKey } = req.body;
-    const updates: any = {};
-    if (provider) updates.provider = provider;
-    if (typeof geminiBaseUrl === 'string') updates.geminiBaseUrl = geminiBaseUrl;
-    if (typeof geminiModel === 'string') updates.geminiModel = geminiModel;
-    if (typeof geminiApiKey === 'string' && geminiApiKey !== '••••••••••••••••') {
-      updates.geminiApiKey = geminiApiKey;
-    }
-    if (typeof openaiBaseUrl === 'string') updates.openaiBaseUrl = openaiBaseUrl;
-    if (typeof openaiModel === 'string') updates.openaiModel = openaiModel;
-    if (typeof openaiApiKey === 'string' && openaiApiKey !== '••••••••••••••••') {
-      updates.openaiApiKey = openaiApiKey;
-    }
-
-    settingsStore.save(updates);
+    settingsStore.updateFromRequest(req.body);
     res.json(settingsStore.getClientSettings());
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -278,7 +246,8 @@ app.post('/api/settings/test', async (req: Request, res: Response) => {
       : await settingsStore.testOpenAi(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Errore interno del server' });
   }
 });
 
