@@ -3,6 +3,9 @@
 # ==========================================
 FROM node:22-alpine
 
+# Apply the latest Alpine security patches to the base image packages
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 
 # Copy dependency manifests

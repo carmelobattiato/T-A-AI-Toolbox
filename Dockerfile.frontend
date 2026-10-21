@@ -23,6 +23,12 @@ RUN npm run build
 # ==========================================
 FROM nginxinc/nginx-unprivileged:alpine
 
+# Remove the XSLT/njs modules and libxml2 pulled in by the base image (not used by docker/nginx.conf).
+# Keeps libxml2 2.13.9-r2 (no fix in Alpine v3.24 yet) out of the image.
+USER root
+RUN apk del --no-cache nginx-module-xslt nginx-module-njs libxslt libxml2
+USER 101
+
 # Copy custom Nginx configuration with reverse proxy for /api/
 # (explicit mode: COPY keeps the checkout's permissions, nginx runs non-root)
 COPY --chmod=644 docker/nginx.conf /etc/nginx/conf.d/default.conf
