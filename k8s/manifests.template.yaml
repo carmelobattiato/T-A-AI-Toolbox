@@ -1,17 +1,16 @@
-# ADM Project Blueprint — manifest Kubernetes (template)
+# T&A AI Toolbox — manifest Kubernetes (template)
 #
 # Generare il manifest reale sostituendo i segnaposto, ad esempio:
 #
-#   sed -e 's|<NAMESPACE>|taai-toolbox|g' \
+#   sed -e 's|<NAMESPACE>|toolbox|g' \
 #       -e 's|<IMAGE_REGISTRY>|registry.example.com/my-team|g' \
-#       -e 's|<BACKEND_TAG>|1.0.0|g' \
-#       -e 's|<FRONTEND_TAG>|1.0.0|g' \
+#       -e 's|<BACKEND_TAG>|1.0.4|g' \
+#       -e 's|<FRONTEND_TAG>|1.0.4|g' \
 #       -e 's|<STORAGE_CLASS>|standard-rwo|g' \
 #       -e 's|<INGRESS_NAMESPACE>|ingress|g' \
 #       -e 's|<INGRESS_APP_NAME>|ingress-proxy|g' \
+#       -e 's|<HOST_LLM_INTERNO>|llm-proxy.internal.svc.cluster.local|g' \
 #       k8s/manifests.template.yaml > k8s/manifests.yaml
-#
-#   kubectl apply -f k8s/manifests.yaml
 #
 # k8s/manifests.yaml contiene i valori dell'ambiente ed è in .gitignore: non committarlo.
 #
@@ -24,12 +23,18 @@
 #   <INGRESS_NAMESPACE>  namespace del reverse proxy che espone l'applicazione
 #   <INGRESS_APP_NAME>   valore della label app.kubernetes.io/name dei pod del reverse proxy
 #                        (adattare il podSelector della NetworkPolicy se usa label diverse)
+#   <HOST_LLM_INTERNO>   hostname dell'endpoint LLM (solo se si usa ALLOWED_LLM_HOSTS)
 #
 # Immagini:
 #   docker build -t <IMAGE_REGISTRY>/taai-toolbox-backend:<BACKEND_TAG>   -f Dockerfile.backend .
 #   docker build -t <IMAGE_REGISTRY>/taai-toolbox-frontend:<FRONTEND_TAG> -f Dockerfile.frontend .
 #   docker push  <IMAGE_REGISTRY>/taai-toolbox-backend:<BACKEND_TAG>
 #   docker push  <IMAGE_REGISTRY>/taai-toolbox-frontend:<FRONTEND_TAG>
+#
+# Prerequisiti:
+#   - Il file `users.json` (utenti e hash delle password) va copiato nel volume /app/data
+#     prima del primo avvio con l'autenticazione attiva, con permessi 0600. Se manca, il
+#     backend crea un admin con password di default: non accettabile in produzione.
 #
 # Reverse proxy davanti all'applicazione (l'app non ha autenticazione propria):
 #   - deve autenticare ogni richiesta (SSO, OIDC, JWT…);
@@ -39,17 +44,22 @@
 #     (le risposte della chat attendono l'LLM).
 #
 # Configurazione LLM, dopo il primo avvio da web GUI → Settings AI:
-#   Provider OpenAI Compatible → base URL, modello e API key di un endpoint compatibile
-#   (OpenAI, LiteLLM, vLLM, Ollama…). In alternativa GEMINI_API_KEY nel Deployment backend.
+#   Provider: OpenAI Compatible
+#   Base URL: endpoint compatibile raggiungibile dal cluster (LiteLLM, vLLM, Ollama…)
+#   Modello e API key: quelli del provider
+#   Nessuna GEMINI_API_KEY necessaria. Dalla v1.0.2 la chiave è legata all'URL salvato:
+#   cambiando l'URL va reinserita. ALLOWED_LLM_HOSTS (facoltativa) è nel Deployment backend.
 #
 # Vincoli del backend (stato in memoria + db.json su PVC ReadWriteOnce):
 #   - replicas: 1 e strategy Recreate — NON scalare. Due repliche divergono e
 #     si sovrascrivono db.json a vicenda; anche le conferme pendenti
-#     dell'assistente vivono in memoria nel singolo pod.
+#     dell'assistente vivono in memoria nel singolo pod. Ogni rilascio del
+#     backend comporta ~20 s di API non disponibili.
 #   - Il PVC copre l'eventuale db.json incluso nell'immagine: l'initContainer
 #     `seed-data` lo copia sul volume solo al primo avvio (se db.json non esiste).
-#     Dalla v1.0.2 db.json non è versionato né nell'immagine: senza seed il
-#     backend genera da solo i dati di default.
+#     db.json non è versionato nell'immagine: senza seed il backend genera da solo i dati di default.
+#   - Dalla v1.0.2 l'audit log sta in /app/data/log.json (migrato da db.json al
+#     primo avvio): i backup devono copiare db.json, settings.json, log.json e users.json.
 #   - PDB minAvailable 1: senza, il cluster autoscaler può spostare il pod quando
 #     consolida i nodi (decine di secondi di disservizio, più a lungo se il disco
 #     è zonale e serve un nodo nella stessa zona).
@@ -158,7 +168,8 @@ spec:
               value: "5000"
             - name: DATA_DIR
               value: /app/data
-            # Facoltative (vedi DEPLOYMENT.md, "Variabili di sicurezza"):
+            # Facoltative (vedi DEPLOYMENT.md, "Variabili di sicurezza"), solo da v1.0.2:
+            # ammette come endpoint LLM solo l'host indicato (confronto sul solo hostname)
             # - name: ALLOWED_LLM_HOSTS
             #   value: "<HOST_LLM_INTERNO>"
           readinessProbe:
@@ -230,8 +241,8 @@ metadata:
     app.kubernetes.io/name: taai-toolbox-frontend
     app.kubernetes.io/part-of: taai-toolbox
 spec:
-  # 2 repliche + PDB maxUnavailable 1: il consolidamento o la manutenzione dei
-  # nodi non lascia mai la SPA senza pod
+  # 2 repliche + PDB maxUnavailable 1 (come i servizi stateless):
+  # il consolidamento dei nodi Autopilot non lascia mai la SPA senza pod
   replicas: 2
   revisionHistoryLimit: 3
   selector:
@@ -302,7 +313,6 @@ spec:
           emptyDir: {}
 
 ---
-# Upstream del reverse proxy
 apiVersion: v1
 kind: Service
 metadata:
@@ -322,10 +332,10 @@ spec:
       targetPort: http
 
 ---
-# Backend single-replica: minAvailable 1 impedisce al cluster autoscaler di
-# sfrattarlo per consolidare i nodi. Gli upgrade dei nodi possono comunque
-# forzare lo spostamento dopo un timeout (su GKE 1h): resta possibile solo
-# durante la manutenzione.
+# Backend single-replica: minAvailable 1 impedisce
+# all'autoscaler Autopilot di sfrattarlo per consolidare i nodi. Gli upgrade
+# GKE rispettano il PDB per max 1h, poi forzano: lo spostamento resta
+# possibile solo durante la manutenzione dei nodi.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -356,13 +366,13 @@ spec:
       app.kubernetes.io/name: taai-toolbox-frontend
 
 ---
-# L'app non ha autenticazione propria: l'unico ingresso ammesso è il reverse
-# proxy che autentica gli utenti. Senza queste policy qualsiasi pod del cluster
-# potrebbe chiamare /api/settings e cambiare base URL / API key del provider LLM.
+# L'app non ha autenticazione propria: l'unico ingresso ammesso è il reverse proxy
+# che autentica gli utenti. Senza queste policy qualsiasi pod del cluster
+# potrebbe chiamare /api/settings e cambiare base URL / API key.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: frontend-from-ingress
+  name: frontend-from-envoy
   namespace: <NAMESPACE>
 spec:
   podSelector:
