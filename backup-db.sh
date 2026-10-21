@@ -20,3 +20,8 @@ if [ -f "data/settings.json" ]; then
     cp "data/settings.json" "$BACKUP_DIR/settings_$TIMESTAMP.json"
     echo "✓ Backup impostazioni completato: $BACKUP_DIR/settings_$TIMESTAMP.json"
 fi
+
+if [ -f "data/users.json" ]; then
+    cp "data/users.json" "$BACKUP_DIR/users_$TIMESTAMP.json"
+    echo "✓ Backup utenti completato: $BACKUP_DIR/users_$TIMESTAMP.json"
+fi

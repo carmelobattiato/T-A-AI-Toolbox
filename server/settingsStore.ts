@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: AISettings = {
 };
 
 const MASK = '••••••••••••••••';
-const KEY_MISSING = "API Key mancante. Se hai cambiato l'URL, reinseriscila: la chiave salvata vale solo per l'endpoint salvato.";
+const KEY_MISSING = "API key missing. If you changed the URL, enter it again: the saved key is only valid for the saved endpoint.";
 
 type Provider = 'gemini' | 'openai';
 type TestResult = { success: boolean; message: string; latencyMs?: number };
@@ -32,16 +32,16 @@ export function checkEndpoint(rawUrl: string | undefined): string | null {
   const trimmed = (rawUrl ?? '').trim();
   if (!trimmed) return null;
   const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
-  if (hasScheme && !/^https?:\/\//i.test(trimmed)) return 'URL non valido: usare http o https';
+  if (hasScheme && !/^https?:\/\//i.test(trimmed)) return 'Invalid URL: use http or https';
   let url: URL;
   try {
     url = new URL(hasScheme ? trimmed : `https://${trimmed}`);
   } catch {
-    return 'URL non valido';
+    return 'Invalid URL';
   }
   const hosts = allowedHosts();
   if (hosts.length > 0 && !hosts.includes(url.hostname.toLowerCase())) {
-    return `Host non consentito (ALLOWED_LLM_HOSTS): ${url.hostname}`;
+    return `Host not allowed (ALLOWED_LLM_HOSTS): ${url.hostname}`;
   }
   return null;
 }
@@ -190,11 +190,11 @@ class SettingsStore {
       const latencyMs = Date.now() - startTime;
       return {
         success: true,
-        message: `Connessione riuscita! Modello "${model}" pronto (${latencyMs}ms).`,
+        message: `Connection successful! Model "${model}" ready (${latencyMs}ms).`,
         latencyMs,
       };
     } catch (err: any) {
-      return { success: false, message: `Errore endpoint: ${String(err.message || err).substring(0, 200)}` };
+      return { success: false, message: `Endpoint error: ${String(err.message || err).substring(0, 200)}` };
     }
   }
 
@@ -206,7 +206,7 @@ class SettingsStore {
     const startTime = Date.now();
 
     if (!baseUrlRaw.trim()) {
-      return { success: false, message: 'URL Base mancante (es. https://api.openai.com/v1)' };
+      return { success: false, message: 'Base URL missing (e.g. https://api.openai.com/v1)' };
     }
     const endpointError = checkEndpoint(baseUrlRaw);
     if (endpointError) return { success: false, message: endpointError };
@@ -236,7 +236,7 @@ class SettingsStore {
       if (res.ok) {
         return {
           success: true,
-          message: `Connessione riuscita! Modello "${model}" pronto (${latencyMs}ms).`,
+          message: `Connection successful! Model "${model}" ready (${latencyMs}ms).`,
           latencyMs,
         };
       }
@@ -250,9 +250,9 @@ class SettingsStore {
         if (errorText.length < 120) errorMsg = errorText;
       }
 
-      return { success: false, message: `Errore endpoint: ${errorMsg}` };
+      return { success: false, message: `Endpoint error: ${errorMsg}` };
     } catch (err: any) {
-      return { success: false, message: `Errore di rete/connessione: ${err.message || 'Verifica URL e certificato'}` };
+      return { success: false, message: `Network/connection error: ${err.message || 'Check the URL and certificate'}` };
     }
   }
 }

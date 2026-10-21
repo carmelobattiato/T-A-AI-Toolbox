@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo "  T&A AI Toolbox - Avvio Applicazione Dual-Container"
+echo "  ADM Project Blueprint - Avvio Applicazione Dual-Container"
 echo "=========================================================="
 
 # Check if Docker is available

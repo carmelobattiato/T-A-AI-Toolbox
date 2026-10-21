@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AISettings } from '../../types/index.ts';
 import { normalizeBaseUrl } from '../../utils/url.ts';
+import { UsersPanel } from './UsersPanel.tsx';
+import { PracticesPanel } from './PracticesPanel.tsx';
 
 type Provider = 'gemini' | 'openai';
 
@@ -37,13 +39,31 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  onPracticesChanged?: () => void;
+  initialTab?: SettingsTab;
 }
+
+type SettingsTab = 'ai' | 'users' | 'practices';
+
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: 'ai', label: 'AI engine' },
+  { id: 'users', label: 'Users & roles' },
+  { id: 'practices', label: 'Practice' },
+];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   onSaved,
+  onPracticesChanged,
+  initialTab = 'ai',
 }) => {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
+
+  // Opening from the practice menu lands directly on the Practice tab
+  useEffect(() => {
+    if (isOpen) setTab(initialTab);
+  }, [isOpen, initialTab]);
   const [provider, setProvider] = useState<Provider>('gemini');
   const [configs, setConfigs] = useState<Record<Provider, ProviderConfig>>(EMPTY_CONFIG);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -116,7 +136,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } catch (err: any) {
       setTestResult({
         success: false,
-        message: err.message || 'Errore di connessione durante il test',
+        message: err.message || 'Connection error during the test',
       });
     } finally {
       setIsTesting(false);
@@ -151,7 +171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Errore durante il salvataggio');
+        throw new Error(data.error || 'Error while saving');
       }
 
       setSaveSuccess(true);
@@ -161,7 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         onClose();
       }, 1000);
     } catch (err: any) {
-      alert(err.message || 'Errore durante il salvataggio');
+      alert(err.message || 'Error while saving');
     } finally {
       setIsLoading(false);
     }
@@ -171,7 +191,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs select-none">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className={`bg-white rounded-2xl shadow-2xl border border-slate-200 w-full ${tab === 'ai' ? 'max-w-xl' : 'max-w-3xl'} overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -180,10 +200,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900">
-                Configurazione Motore AI
+                Settings
               </h3>
               <p className="text-xs text-slate-500">
-                Seleziona il provider per il T&A Assistant (Gemini o OpenAI compatibile)
+                AI engine, users and practices (administrators only)
               </p>
             </div>
           </div>
@@ -196,12 +216,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
+        <div className="flex gap-1 px-6 pt-3 border-b border-slate-100">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition-colors cursor-pointer ${
+                tab === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'users' && <UsersPanel />}
+        {tab === 'practices' && <PracticesPanel onChanged={() => onPracticesChanged?.()} />}
+
         {/* Content */}
+        {tab === 'ai' && (
         <form onSubmit={handleSave} className="p-6 space-y-5">
           {/* Provider Selection Cards */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Provider Principale
+              Main Provider
             </label>
             <div className="grid grid-cols-2 gap-3">
               {/* Gemini Option */}
@@ -230,7 +269,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                    Modello gemini-3.8-flash integrato nativamente in AI Studio.
+                    Model gemini-3.8-flash natively integrated in AI Studio.
                   </p>
                 </div>
               </div>
@@ -261,7 +300,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                    API OpenAI o compatibile (vLLM, Ollama, router aziendale).
+                    OpenAI or compatible API (vLLM, Ollama, corporate router).
                   </p>
                 </div>
               </div>
@@ -273,17 +312,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center justify-between pb-1 border-b border-slate-200/70">
               <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-blue-600" />
-                {provider === 'gemini' ? 'Parametri API Google Gemini' : 'Parametri API OpenAI / Compatibile'}
+                {provider === 'gemini' ? 'Google Gemini API Parameters' : 'OpenAI / Compatible API Parameters'}
               </span>
               <span className="text-[10px] text-slate-500 font-medium">
-                {provider === 'gemini' ? 'Endpoint Google predefinito se vuoto' : 'Supporta standard v1/chat/completions'}
+                {provider === 'gemini' ? 'Default Google endpoint if empty' : 'Supports the v1/chat/completions standard'}
               </span>
             </div>
 
             {/* Base URL */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                URL Endpoint Base
+                Base Endpoint URL
               </label>
               <div className="relative">
                 <input
@@ -296,10 +335,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
                 {provider === 'gemini' ? (
-                  <>Esempio proxy: <code className="text-slate-600">https://proxy-corp.internal</code></>
+                  <>Proxy example: <code className="text-slate-600">https://proxy-corp.internal</code></>
                 ) : (
                   <>
-                    Esempi: <code className="text-slate-600">https://api.openai.com/v1</code>,{' '}
+                    Examples: <code className="text-slate-600">https://api.openai.com/v1</code>,{' '}
                     <code className="text-slate-600">http://localhost:11434/v1</code>,{' '}
                     <code className="text-slate-600">https://proxy-corp.internal/v1</code>
                   </>
@@ -310,7 +349,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Model Name */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                Nome Modello
+                Model Name
               </label>
               <div className="relative">
                 <input
@@ -323,7 +362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               {provider === 'openai' && (
                 <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto text-[10px]">
-                  <span className="text-slate-400">Suggeriti:</span>
+                  <span className="text-slate-400">Suggested:</span>
                   {['gpt-4o-mini', 'gpt-4o', 'qwen2.5:72b', 'llama3.3'].map(m => (
                     <button
                       key={m}
@@ -344,7 +383,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>API Key</span>
                 {current.hasKey && (
                   <span className="text-[10px] text-emerald-600 font-medium">
-                    ✓ Chiave memorizzata
+                    ✓ Key stored
                   </span>
                 )}
               </label>
@@ -353,7 +392,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type={showApiKey ? 'text' : 'password'}
                   value={current.apiKey}
                   onChange={e => patchCurrent({ apiKey: e.target.value })}
-                  placeholder={current.hasKey ? '•••••••••••••••• (lascia invariato per non modificare)' : provider === 'gemini' ? 'AIza...' : 'sk-...'}
+                  placeholder={current.hasKey ? '•••••••••••••••• (leave unchanged to keep it)' : provider === 'gemini' ? 'AIza...' : 'sk-...'}
                   className="w-full pl-3 pr-10 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 font-mono text-slate-800"
                 />
                 <button
@@ -371,13 +410,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {current.apiKey === MASKED_KEY &&
                 normalizeBaseUrl(current.baseUrl) !== normalizeBaseUrl(loadedUrls[provider]) && (
                   <p className="text-[10px] text-amber-700 font-medium mt-1">
-                    Hai cambiato l'URL: la chiave memorizzata vale solo per l'endpoint salvato, reinseriscila.
+                    You changed the URL: the stored key is only valid for the saved endpoint, please re-enter it.
                   </p>
                 )}
               <p className="text-[10px] text-slate-400 mt-1">
                 {provider === 'gemini'
-                  ? 'Se vuota viene usata la variabile GEMINI_API_KEY del server.'
-                  : 'Per endpoint locali senza auth (es. Ollama), puoi inserire una stringa qualsiasi (es. "ollama").'}
+                  ? 'If empty, the server GEMINI_API_KEY variable is used.'
+                  : 'For local endpoints without auth (e.g. Ollama), you can enter any string (e.g. "ollama").'}
               </p>
             </div>
 
@@ -394,7 +433,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 ) : (
                   <Zap className="w-3.5 h-3.5 text-blue-600" />
                 )}
-                <span>{isTesting ? 'Verifica in corso...' : 'Testa Connessione'}</span>
+                <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
               </button>
             </div>
 
@@ -414,7 +453,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold">
-                    {testResult.success ? 'Connessione stabilita!' : 'Test fallito'}
+                    {testResult.success ? 'Connection established!' : 'Test failed'}
                   </div>
                   <div className="text-[11px] mt-0.5 leading-snug">
                     {testResult.message}
@@ -429,7 +468,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div>
               {saveSuccess && (
                 <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> Configurazione salvata!
+                  <CheckCircle2 className="w-4 h-4" /> Configuration saved!
                 </span>
               )}
             </div>
@@ -439,7 +478,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={onClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
               >
-                Annulla
+                Cancel
               </button>
               <button
                 type="submit"
@@ -449,11 +488,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {isLoading ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : null}
-                <span>Salva configurazione</span>
+                <span>Save configuration</span>
               </button>
             </div>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

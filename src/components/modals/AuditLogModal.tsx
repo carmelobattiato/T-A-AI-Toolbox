@@ -39,12 +39,12 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose })
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-2 text-slate-800">
             <History className="w-5 h-5 text-indigo-600" />
-            <h3 className="font-bold text-base">Audit Trail & Registro Operazioni</h3>
+            <h3 className="font-bold text-base">Audit trail & Change log</h3>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={fetchLogs}
-              title="Aggiorna log"
+              title="Refresh log"
               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -61,9 +61,9 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose })
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-2.5 text-xs">
           {isLoading ? (
-            <div className="text-center py-12 text-slate-400">Caricamento registro eventi...</div>
+            <div className="text-center py-12 text-slate-400">Loading event log...</div>
           ) : logs.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">Nessun evento registrato.</div>
+            <div className="text-center py-12 text-slate-400">No events recorded.</div>
           ) : (
             logs.map(log => {
               const actionColor =
@@ -98,7 +98,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose })
                   <div className="text-right shrink-0">
                     <span className="text-[10px] text-slate-500 font-medium block">{log.user}</span>
                     <span className="text-[9px] text-slate-400">
-                      {new Date(log.createdAt).toLocaleTimeString()} · {new Date(log.createdAt).toLocaleDateString()}
+                      {new Date(log.createdAt).toLocaleTimeString('en-GB')} · {new Date(log.createdAt).toLocaleDateString('en-GB')}
                     </span>
                   </div>
                 </div>

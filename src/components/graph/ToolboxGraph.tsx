@@ -12,7 +12,7 @@ import {
   useReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react';
-import { Phase, Item, FilterState } from '../../types/index.ts';
+import { Phase, Item, FilterState, Practice } from '../../types/index.ts';
 import { PhaseNode } from './PhaseNode.tsx';
 import { ToolNode } from './ToolNode.tsx';
 import { IdeaNode } from './IdeaNode.tsx';
@@ -43,6 +43,12 @@ const edgeTypes = {
 };
 
 interface ToolboxGraphProps {
+  readOnly: boolean;
+  practices: Practice[];
+  practiceId: string;
+  canCreatePractice: boolean;
+  onSelectPractice: (practiceId: string) => void;
+  onCreatePractice: () => void;
   phases: Phase[];
   items: Item[];
   filters: FilterState;
@@ -61,6 +67,12 @@ interface ToolboxGraphProps {
 
 // Inner component so we can use `useReactFlow()`
 const GraphInner: React.FC<ToolboxGraphProps> = ({
+  readOnly,
+  practices,
+  practiceId,
+  canCreatePractice,
+  onSelectPractice,
+  onCreatePractice,
   phases,
   items,
   filters,
@@ -111,9 +123,9 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       position: { x: -200, y: 110 },
       data: {
         category: 'TOOL_IDEA',
-        title: 'Tool e WiP',
-        subtitle: 'Asset e soluzioni di automazione T&A',
-        countLabel: `${totalTools} tool · ${totalIdeas} WiP`,
+        title: 'Tools & WiP',
+        subtitle: 'Automation assets and solutions',
+        countLabel: `${totalTools} ${totalTools === 1 ? 'tool' : 'tools'} · ${totalIdeas} WiP`,
       },
       draggable: false,
       selectable: false,
@@ -125,10 +137,17 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       position: { x: -200, y: 366 },
       data: {
         category: 'PHASE',
-        title: 'Fasi Processo T&A',
-        subtitle: 'Sequenza end-to-end a matitone',
-        countLabel: `${sortedPhases.length} fasi`,
+        title: 'Process Phases',
+        subtitle: 'End-to-end chevron sequence',
+        countLabel: `${sortedPhases.length} ${sortedPhases.length === 1 ? 'phase' : 'phases'}`,
+        practices,
+        practiceId,
+        canCreatePractice,
+        onSelectPractice,
+        onCreatePractice,
       },
+      // Above the other nodes so the practice menu is never covered
+      zIndex: 20,
       draggable: false,
       selectable: false,
     });
@@ -139,9 +158,9 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       position: { x: -200, y: 640 },
       data: {
         category: 'NEED',
-        title: 'Esigenze',
-        subtitle: 'Bisogni operativi e gap da colmare',
-        countLabel: `${totalNeeds} esigenze`,
+        title: 'Needs',
+        subtitle: 'Operational needs and gaps to close',
+        countLabel: `${totalNeeds} ${totalNeeds === 1 ? 'need' : 'needs'}`,
       },
       draggable: false,
       selectable: false,
@@ -149,7 +168,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
 
     // 1. Position Phases and Inter-Phase (+) Buttons
     // Initial AddPhase button before first phase
-    nodes.push({
+    if (!readOnly) nodes.push({
       id: 'add-phase-start',
       type: 'addPhase',
       position: { x: phaseStartX - 44, y: centerY + 31 },
@@ -186,6 +205,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           ideasCount: phaseIdeas.length,
           needsCount: phaseNeeds.length,
           onSelect: onSelectPhase,
+          readOnly,
           onAddTool,
           onAddIdea,
           onAddNeed,
@@ -194,7 +214,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       });
 
       // Add inter-phase (+) button between this and next phase
-      nodes.push({
+      if (!readOnly) nodes.push({
         id: `add-phase-after-${phase.id}`,
         type: 'addPhase',
         position: { x: phaseX + phaseWidth + 7, y: centerY + 31 },
@@ -297,7 +317,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           isDimmed,
           onSelect: onSelectItem,
         },
-        draggable: true,
+        draggable: !readOnly,
       });
 
       // Create curved edges from item to all covered phases
@@ -395,7 +415,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           isDimmed,
           onSelect: onSelectItem,
         },
-        draggable: true,
+        draggable: !readOnly,
       });
 
       // Create curved edges from Phase bottom handle to Need top handle
@@ -435,6 +455,12 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
 
     return { initialNodes: nodes, initialEdges: edges };
   }, [
+    readOnly,
+    practices,
+    practiceId,
+    canCreatePractice,
+    onSelectPractice,
+    onCreatePractice,
     phases,
     items,
     filters,
@@ -461,11 +487,11 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   // Handle saving position after user drags an item (Spec 54)
   const onNodeDragStop = useCallback(
     (_: any, node: Node) => {
-      if (node.type === 'tool' || node.type === 'idea' || node.type === 'need') {
+      if (!readOnly && (node.type === 'tool' || node.type === 'idea' || node.type === 'need')) {
         onUpdateItemPosition(node.id, Math.round(node.position.x), Math.round(node.position.y));
       }
     },
-    [onUpdateItemPosition]
+    [readOnly, onUpdateItemPosition]
   );
 
   const handleResetView = () => {
@@ -492,27 +518,27 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
         minZoom={0.25}
         maxZoom={1.8}
         fitViewOptions={{ padding: 0.2 }}
-        nodesDraggable={true}
+        nodesDraggable={!readOnly}
         nodesConnectable={false}
         elementsSelectable={true}
       >
         {/* Subtle grid dots background */}
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} color="#E2E8F0" />
 
-        {/* Panoramica Integrated Card in bottom-left corner */}
+        {/* Overview Integrated Card in bottom-left corner */}
         <div className="absolute bottom-5 left-6 z-20 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/90 pointer-events-auto overflow-hidden transition-all duration-300">
           <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50/90 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Compass className="w-3.5 h-3.5 text-purple-600" />
               <span className="text-[11px] font-bold tracking-wider text-slate-800 uppercase">
-                Panoramica
+                Overview
               </span>
             </div>
             <button
               type="button"
               onClick={() => setIsMiniMapCollapsed(!isMiniMapCollapsed)}
               className="p-1 hover:text-slate-900 text-slate-400 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer"
-              title={isMiniMapCollapsed ? 'Espandi Panoramica' : 'Comprimi Panoramica'}
+              title={isMiniMapCollapsed ? 'Expand Overview' : 'Collapse Overview'}
             >
               {isMiniMapCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
@@ -552,7 +578,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
                   <span className="w-2 h-2 rounded-full bg-purple-600" /> WiP
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600" /> Esigenze
+                  <span className="w-2 h-2 rounded-full bg-emerald-600" /> Needs
                 </span>
               </div>
             </div>
@@ -561,7 +587,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
               onClick={() => setIsMiniMapCollapsed(false)}
               className="px-3.5 py-1.5 text-[10px] text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1.5 hover:bg-slate-50 transition-colors"
             >
-              <span className="text-[10px] font-medium">Mostra mappa</span>
+              <span className="text-[10px] font-medium">Show map</span>
             </div>
           )}
         </div>
@@ -584,7 +610,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
             type="button"
             onClick={handleResetView}
             className="px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-            title="Reset vista 100%"
+            title="Reset view to 100%"
           >
             100%
           </button>
@@ -592,9 +618,9 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
             type="button"
             onClick={handleFitView}
             className="px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-50 rounded-md transition-colors cursor-pointer"
-            title="Adatta vista a tutto lo schermo"
+            title="Fit view to the whole screen"
           >
-            Adatta
+            Fit
           </button>
           <button
             type="button"
@@ -615,7 +641,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
               }
             }}
             className="p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
-            title="Schermo intero"
+            title="Fullscreen"
           >
             <Maximize2 className="w-4 h-4" />
           </button>

@@ -60,7 +60,7 @@ export const NeedNode: React.FC<{ data: NeedNodeData }> = ({ data }) => {
       >
         {/* Need Icon */}
         <div className="mb-1 transition-transform duration-200 group-hover:scale-110">
-          {getItemIcon('NEED', item.title)}
+          {getItemIcon('NEED', item.title, item.icon)}
         </div>
 
         {/* Title (2-3 lines centered) */}
@@ -71,7 +71,7 @@ export const NeedNode: React.FC<{ data: NeedNodeData }> = ({ data }) => {
         {/* Owner Avatar / Badge (same as ToolNode) */}
         <div className="absolute bottom-1 right-2 flex items-center">
           <div
-            title={`Owner: ${item.owner || 'Team T&A'}`}
+            title={`Owner: ${item.owner || 'Not specified'}`}
             className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
           >
             {getOwnerInitials(item.owner)}
@@ -90,9 +90,9 @@ export const NeedNode: React.FC<{ data: NeedNodeData }> = ({ data }) => {
       {isHovered && (
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-slate-900/95 text-white text-xs rounded-lg py-1.5 px-2.5 shadow-xl pointer-events-none z-50 whitespace-nowrap border border-slate-700">
           <div className="font-semibold text-emerald-300">{item.title}</div>
-          <div className="text-[10px] text-slate-400">Esigenza operativa</div>
+          <div className="text-[10px] text-slate-400">Operational need</div>
           <div className="text-[10px] text-slate-300 mt-0.5">
-            Fasi correlate: {coveredPhases.map(p => p.title).join(', ') || 'Nessuna fase'}
+            Related phases: {coveredPhases.map(p => p.title).join(', ') || 'No phase'}
           </div>
           {item.desiredOutcome && (
             <div className="text-[10px] text-slate-400 max-w-[200px] truncate">

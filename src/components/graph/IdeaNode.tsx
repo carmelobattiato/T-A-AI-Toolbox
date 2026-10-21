@@ -59,7 +59,7 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
       >
         {/* Idea Icon */}
         <div className="mb-1 transition-transform duration-200 group-hover:scale-110">
-          {getItemIcon('IDEA', item.title)}
+          {getItemIcon('IDEA', item.title, item.icon)}
         </div>
 
         {/* Title */}
@@ -75,7 +75,7 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
         {/* Owner Avatar / Badge (same as ToolNode) */}
         <div className="absolute bottom-1 right-2 flex items-center">
           <div
-            title={`Proponente: ${item.owner || 'Team T&A'}`}
+            title={`Proposer: ${item.owner || 'Not specified'}`}
             className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
           >
             {getOwnerInitials(item.owner)}
@@ -94,9 +94,9 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
       {isHovered && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 text-white text-xs rounded-lg py-1.5 px-2.5 shadow-xl pointer-events-none z-50 whitespace-nowrap border border-slate-700">
           <div className="font-semibold text-purple-300">{item.title}</div>
-          <div className="text-[10px] text-slate-400">WiP in valutazione</div>
+          <div className="text-[10px] text-slate-400">WiP under evaluation</div>
           <div className="text-[10px] text-slate-300 mt-0.5">
-            Interessa: {coveredPhases.map(p => p.title).join(', ') || 'Nessuna fase'}
+            Relevant to: {coveredPhases.map(p => p.title).join(', ') || 'No phase'}
           </div>
           {item.expectedBenefit && (
             <div className="text-[10px] text-slate-400 max-w-[200px] truncate">
@@ -104,7 +104,7 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
             </div>
           )}
           {item.owner && (
-            <div className="text-[10px] text-slate-400">Proponente: {item.owner}</div>
+            <div className="text-[10px] text-slate-400">Proposer: {item.owner}</div>
           )}
         </div>
       )}

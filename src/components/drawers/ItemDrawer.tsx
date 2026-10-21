@@ -27,6 +27,7 @@ interface ItemDrawerProps {
   onDeleteItem: (itemId: string) => void;
   onAddAttachment: (itemId: string, fileData: { fileName: string; mimeType: string; data: string }) => Promise<void>;
   onDeleteAttachment: (attachmentId: string) => Promise<void>;
+  readOnly?: boolean;
 }
 
 export const ItemDrawer: React.FC<ItemDrawerProps> = ({
@@ -38,6 +39,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   onDeleteItem,
   onAddAttachment,
   onDeleteAttachment,
+  readOnly = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'phases' | 'screenshots' | 'notes'>('details');
   const [isUploading, setIsUploading] = useState(false);
@@ -52,17 +54,17 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
     if (!file) return;
 
     if (attachments.length >= 3) {
-      alert('Massimo 3 allegati consentiti per elemento');
+      alert('Maximum 3 attachments allowed per item');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Il file supera il limite di 5 MB');
+      alert('The file exceeds the 5 MB limit');
       return;
     }
 
     if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
-      alert('Sono consentiti solo file PNG, JPG o JPEG');
+      alert('Only PNG, JPG or JPEG files are allowed');
       return;
     }
 
@@ -77,7 +79,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
           data: base64Data,
         });
       } catch (err: any) {
-        alert(err.message || 'Errore nel caricamento allegato');
+        alert(err.message || 'Error uploading attachment');
       } finally {
         setIsUploading(false);
       }
@@ -108,29 +110,29 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             </h2>
             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
               <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-md border ${theme.bg} ${theme.text} ${theme.border}`}>
-                {item.type === 'TOOL' ? 'Tool esistente' : item.type === 'IDEA' ? 'WiP' : 'Esigenza'}
+                {item.type === 'TOOL' ? 'Existing tool' : item.type === 'IDEA' ? 'WiP' : 'Need'}
               </span>
               {item.generalizationRequired && (
                 <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-                  Da generalizzare
+                  To be generalized
                 </span>
               )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <button
+          {!readOnly && <button
             type="button"
             onClick={() => onEditItem(item)}
-            title="Modifica"
+            title="Edit"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
           >
             <Edit3 className="w-4 h-4" />
-          </button>
+          </button>}
           <button
             type="button"
             onClick={onClose}
-            title="Chiudi"
+            title="Close"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
           >
             <X className="w-4 h-4" />
@@ -150,7 +152,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            Dettagli
+            Details
           </button>
           <button
             type="button"
@@ -161,7 +163,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            Fasi ({item.phaseIds.length})
+            Phases ({item.phaseIds.length})
           </button>
           <button
             type="button"
@@ -172,7 +174,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            Screenshot ({attachments.length})
+            Screenshots ({attachments.length})
           </button>
           <button
             type="button"
@@ -183,7 +185,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            Note
+            Notes
           </button>
         </div>
       </div>
@@ -196,7 +198,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             {item.summary && (
               <div>
                 <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Descrizione breve
+                  Short description
                 </h4>
                 <p className="text-xs text-slate-700 leading-relaxed font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                   {item.summary}
@@ -208,7 +210,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             {item.description && (
               <div>
                 <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Descrizione completa
+                  Full description
                 </h4>
                 <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
                   {item.description}
@@ -219,7 +221,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             {/* Fasi Coperte Chips */}
             <div>
               <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                Fasi coperte
+                Covered phases
               </h4>
               <div className="flex flex-wrap gap-1.5">
                 {coveredPhases.map(ph => (
@@ -241,7 +243,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {/* URLs */}
                 <div>
                   <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    Link e Repository
+                    Links & Repository
                   </h4>
                   <div className="space-y-1.5">
                     {toSafeHref(item.githubUrl) && (
@@ -281,7 +283,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                       >
                         <div className="flex items-center gap-2">
                           <ExternalLink className="w-4 h-4 text-emerald-600" />
-                          <span className="font-medium">Demo Online</span>
+                          <span className="font-medium">Online Demo</span>
                         </div>
                         <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
                       </a>
@@ -297,7 +299,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {item.problem && (
                   <div>
                     <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Problema
+                      Problem
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed bg-purple-50/50 p-2.5 rounded-lg border border-purple-100">
                       {item.problem}
@@ -307,7 +309,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {item.requirements && (
                   <div>
                     <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Requisiti tecnici
+                      Technical requirements
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                       {item.requirements}
@@ -317,7 +319,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {item.expectedBenefit && (
                   <div>
                     <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Beneficio atteso
+                      Expected benefit
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-100">
                       {item.expectedBenefit}
@@ -333,7 +335,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {item.currentProcess && (
                   <div>
                     <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Come viene gestita oggi
+                      How it is handled today
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                       {item.currentProcess}
@@ -343,7 +345,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {item.desiredTool && (
                   <div>
                     <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Tool immaginato
+                      Envisioned tool
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
                       {item.desiredTool}
@@ -353,7 +355,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 {item.desiredOutcome && (
                   <div>
                     <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Risultato desiderato
+                      Desired outcome
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-100">
                       {item.desiredOutcome}
@@ -367,21 +369,21 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             {item.type !== 'TOOL' && (
               <div>
                 <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Priorità
+                  Priority
                 </h4>
                 {item.priority != null ? (
                   <span className="text-[11px] font-semibold px-2 py-1 rounded-md bg-slate-50 text-slate-800 border border-slate-200">
-                    P{item.priority}{item.priority === 1 ? ' · più alta' : ''}
+                    P{item.priority}{item.priority === 1 ? ' · highest' : ''}
                   </span>
                 ) : (
-                  <p className="text-[11px] text-slate-400">Non impostata</p>
+                  <p className="text-[11px] text-slate-400">Not set</p>
                 )}
               </div>
             )}
 
             {[
               { label: 'Tag', values: item.tags ?? [], prefix: '#' },
-              { label: 'Clienti', values: item.customers ?? [], prefix: '' },
+              { label: 'Customers', values: item.customers ?? [], prefix: '' },
             ].map(section => (
               <div key={section.label}>
                 <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -396,21 +398,21 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-400">Nessuno</p>
+                  <p className="text-[11px] text-slate-400">None</p>
                 )}
               </div>
             ))}
 
             <div>
               <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                {item.type === 'TOOL' ? 'Owner / POC' : item.type === 'IDEA' ? 'Proponente / Autore' : 'Owner / Referente'}
+                {item.type === 'TOOL' ? 'Owner / POC' : item.type === 'IDEA' ? 'Proposer / Author' : 'Owner / Contact'}
               </h4>
               <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-200">
                 <div className="w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">
                   {getOwnerInitials(item.owner)}
                 </div>
                 <div>
-                  <div className="text-xs font-semibold text-slate-900">{item.owner || 'Team T&A'}</div>
+                  <div className="text-xs font-semibold text-slate-900">{item.owner || 'Not specified'}</div>
                   <div className="text-[10px] text-slate-500">
                     {/* Owner may already be an email (SSO username from x-forwarded-user) */}
                     {item.owner
@@ -429,7 +431,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
         {activeTab === 'phases' && (
           <div className="space-y-2">
             <p className="text-xs text-slate-500 mb-2">
-              Questo elemento supporta {coveredPhases.length} fasi del processo T&A. Clicca su una fase per metterla a fuoco nella mappa.
+              This item supports {coveredPhases.length} {coveredPhases.length === 1 ? 'phase' : 'phases'} of the process. Click a phase to focus it on the map.
             </p>
             {coveredPhases.map(ph => (
               <div
@@ -451,7 +453,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                   </div>
                 </div>
                 <span className="text-[10px] text-blue-600 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
-                  Visualizza →
+                  View →
                 </span>
               </div>
             ))}
@@ -463,12 +465,12 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-700">
-                Immagini e schemi ({attachments.length}/3)
+                Images and diagrams ({attachments.length}/3)
               </span>
-              {attachments.length < 3 && (
+              {!readOnly && attachments.length < 3 && (
                 <label className="cursor-pointer text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1">
                   <Upload className="w-3.5 h-3.5" />
-                  <span>{isUploading ? 'Caricamento...' : 'Carica immagine'}</span>
+                  <span>{isUploading ? 'Uploading...' : 'Upload image'}</span>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/jpg"
@@ -483,9 +485,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             {attachments.length === 0 ? (
               <div className="text-center py-8 px-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                 <ImageIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-600 font-medium">Nessuno screenshot caricato</p>
+                <p className="text-xs text-slate-600 font-medium">No screenshots uploaded</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Puoi caricare fino a 3 immagini (PNG, JPG, max 5MB ciascuna)
+                  You can upload up to 3 images (PNG, JPG, max 5MB each)
                 </p>
               </div>
             ) : (
@@ -500,14 +502,14 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-slate-900/70 p-1.5 flex items-center justify-between text-white text-[10px]">
                       <span className="truncate max-w-[100px]">{att.fileName}</span>
-                      <button
+                      {!readOnly && <button
                         type="button"
                         onClick={() => onDeleteAttachment(att.id)}
                         className="text-red-300 hover:text-red-100 p-0.5"
-                        title="Elimina immagine"
+                        title="Delete image"
                       >
                         <Trash2 className="w-3 h-3" />
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 ))}
@@ -520,20 +522,20 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
         {activeTab === 'notes' && (
           <div>
             <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-              Note operative
+              Operating notes
             </h4>
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-700 leading-relaxed min-h-[120px] whitespace-pre-line">
-              {item.notes || 'Nessuna nota aggiuntiva memorizzata.'}
+              {item.notes || 'No additional notes stored.'}
             </div>
           </div>
         )}
       </div>
 
-      {/* Footer Actions */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+      {/* Footer Actions (hidden in read-only mode) */}
+      {!readOnly && <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
-            <span className="text-[11px] font-bold text-red-700">Eliminare?</span>
+            <span className="text-[11px] font-bold text-red-700">Delete?</span>
             <button
               type="button"
               onClick={() => {
@@ -542,14 +544,14 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
               }}
               className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
             >
-              Sì, elimina
+              Yes, delete
             </button>
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(false)}
               className="px-2.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-xs transition-colors cursor-pointer"
             >
-              Annulla
+              Cancel
             </button>
           </div>
         ) : (
@@ -559,7 +561,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
             className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1.5 rounded hover:bg-red-50 transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Elimina</span>
+            <span>Delete</span>
           </button>
         )}
 
@@ -569,9 +571,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
           className="text-xs font-semibold px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <Edit3 className="w-3.5 h-3.5" />
-          <span>Modifica elemento</span>
+          <span>Edit item</span>
         </button>
-      </div>
+      </div>}
 
       {/* Lightbox Modal */}
       {lightboxImage && (

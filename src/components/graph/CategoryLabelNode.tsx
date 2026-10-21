@@ -1,5 +1,6 @@
-import React from 'react';
-import { Wrench, ChevronsRight, Target, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Wrench, ChevronsRight, Target, ChevronDown, Check, Plus } from 'lucide-react';
+import { Practice } from '../../types/index.ts';
 
 export type CategoryType = 'TOOL_IDEA' | 'PHASE' | 'NEED';
 
@@ -8,10 +9,19 @@ interface CategoryLabelData {
   title: string;
   subtitle: string;
   countLabel?: string;
+  // Only the process label: the practice switcher
+  practices?: Practice[];
+  practiceId?: string;
+  canCreatePractice?: boolean;
+  onSelectPractice?: (practiceId: string) => void;
+  onCreatePractice?: () => void;
 }
 
 export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data }) => {
-  const { category, title, subtitle, countLabel } = data;
+  const { category, title, subtitle, countLabel, practices, practiceId, canCreatePractice, onSelectPractice, onCreatePractice } = data;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const hasSwitcher = category === 'PHASE' && practices && onSelectPractice;
+  const activePractice = practices?.find(p => p.id === practiceId);
 
   const getConfig = () => {
     switch (category) {
@@ -45,7 +55,7 @@ export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data 
   const config = getConfig();
 
   return (
-    <div className="relative select-none pointer-events-none">
+    <div className={`relative select-none ${hasSwitcher ? '' : 'pointer-events-none'}`}>
       {/* Visual dashed anchor line pointing to the graph items */}
       <div
         className={`absolute left-full top-1/2 -translate-y-1/2 w-10 border-t-2 border-dashed ${config.lineColor} opacity-70`}
@@ -63,11 +73,23 @@ export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data 
             <div className={`p-1.5 rounded-lg border ${config.bgIcon} shrink-0`}>
               {config.icon}
             </div>
-            <div className="font-extrabold text-[11px] text-slate-800 tracking-wider uppercase">
-              {title}
-            </div>
+            {hasSwitcher ? (
+              <button
+                type="button"
+                onClick={() => setMenuOpen(open => !open)}
+                title="Switch practice"
+                className="nodrag nopan flex items-center gap-1 whitespace-nowrap font-extrabold text-[11px] text-slate-800 tracking-wider uppercase hover:text-purple-700 cursor-pointer"
+              >
+                {title}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+              </button>
+            ) : (
+              <div className="font-extrabold text-[11px] text-slate-800 tracking-wider uppercase">
+                {title}
+              </div>
+            )}
           </div>
-          {countLabel && (
+          {countLabel && !hasSwitcher && (
             <span
               className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${config.badgeBg}`}
             >
@@ -75,9 +97,56 @@ export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data 
             </span>
           )}
         </div>
+        {hasSwitcher && activePractice && (
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="inline-flex max-w-[110px] items-center truncate rounded-md bg-purple-600 px-2 py-0.5 text-[10px] font-bold text-white">
+              {activePractice.name}
+            </span>
+            {countLabel && (
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${config.badgeBg}`}>
+                {countLabel}
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-[10px] text-slate-500 leading-snug pl-0.5">
           {subtitle}
         </p>
+
+        {hasSwitcher && menuOpen && (
+          <div className="nodrag nopan absolute left-0 top-full z-50 mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-1 shadow-xl text-xs font-medium">
+            <div className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Practice</div>
+            {practices!.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onSelectPractice!(p.id);
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors cursor-pointer ${
+                  p.id === practiceId ? 'bg-purple-50 text-purple-800' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="truncate">{p.name}</span>
+                {p.id === practiceId && <Check className="h-3.5 w-3.5 shrink-0" />}
+              </button>
+            ))}
+            {canCreatePractice && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onCreatePractice?.();
+                }}
+                className="mt-1 flex w-full items-center gap-1.5 rounded-lg border-t border-slate-100 px-2.5 py-1.5 text-left text-purple-700 hover:bg-purple-50 cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New practice
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

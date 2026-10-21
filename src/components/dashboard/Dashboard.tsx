@@ -17,12 +17,13 @@ interface DashboardProps {
   tiles: DashboardTile[];
   onAddTile: (slot: number) => void;
   onDeleteTile: (slot: number) => void;
+  readOnly?: boolean;
   onSelectItem: (item: Item) => void;
 }
 
 const SlotBadge: React.FC<{ slot: number }> = ({ slot }) => (
   <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-md px-1.5 py-0.5 shrink-0">
-    N°{slot}
+    No. {slot}
   </span>
 );
 
@@ -30,7 +31,7 @@ const BarChart: React.FC<{ buckets: Bucket[] }> = ({ buckets }) => {
   if (buckets.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 px-4">
-        Nessun dato disponibile per questo grafico.
+        No data available for this chart.
       </div>
     );
   }
@@ -84,7 +85,7 @@ const ItemList: React.FC<{ rows: Item[]; total: number; onSelectItem: (item: Ite
   if (rows.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 px-4">
-        Nessun elemento corrisponde a questa query.
+        No item matches this query.
       </div>
     );
   }
@@ -97,7 +98,7 @@ const ItemList: React.FC<{ rows: Item[]; total: number; onSelectItem: (item: Ite
             <button
               type="button"
               onClick={() => onSelectItem(item)}
-              title="Apri nella mappa"
+              title="Open in the map"
               className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-slate-200 hover:border-purple-300 hover:bg-purple-50/40 text-left transition-colors cursor-pointer"
             >
               <span className="text-[11px] font-bold text-slate-400 w-4 shrink-0">{index + 1}</span>
@@ -118,7 +119,7 @@ const ItemList: React.FC<{ rows: Item[]; total: number; onSelectItem: (item: Ite
         ))}
       </ol>
       {total > rows.length && (
-        <p className="text-[10px] text-slate-400 mt-1.5">Mostrati {rows.length} di {total}</p>
+        <p className="text-[10px] text-slate-400 mt-1.5">Showing {rows.length} of {total}</p>
       )}
     </div>
   );
@@ -129,10 +130,11 @@ interface TileViewProps {
   items: Item[];
   phases: Phase[];
   onDelete: () => void;
+  readOnly: boolean;
   onSelectItem: (item: Item) => void;
 }
 
-const TileView: React.FC<TileViewProps> = ({ tile, items, phases, onDelete, onSelectItem }) => {
+const TileView: React.FC<TileViewProps> = ({ tile, items, phases, onDelete, readOnly, onSelectItem }) => {
   const { total, buckets, rows } = useMemo(() => computeTile(tile, items, phases), [tile, items, phases]);
 
   return (
@@ -140,14 +142,14 @@ const TileView: React.FC<TileViewProps> = ({ tile, items, phases, onDelete, onSe
       <div className="flex items-center gap-2 mb-0.5">
         <SlotBadge slot={tile.slot} />
         <h2 className="text-sm font-bold text-slate-900 truncate flex-1" title={tile.title}>{tile.title}</h2>
-        <button
+        {!readOnly && <button
           type="button"
           onClick={onDelete}
-          title="Rimuovi tile"
+          title="Remove tile"
           className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
         >
           <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        </button>}
       </div>
       <p className="text-[11px] text-slate-500 mb-3 line-clamp-2">{describeTile(tile)}</p>
       {tile.chart === 'number' && (
@@ -159,26 +161,26 @@ const TileView: React.FC<TileViewProps> = ({ tile, items, phases, onDelete, onSe
   );
 };
 
-const EmptyTile: React.FC<{ slot: number; onAdd: () => void }> = ({ slot, onAdd }) => (
+const EmptyTile: React.FC<{ slot: number; onAdd: () => void; readOnly: boolean }> = ({ slot, onAdd, readOnly }) => (
   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-4 flex flex-col min-h-0">
     <div className="flex items-center gap-2">
       <SlotBadge slot={slot} />
-      <span className="text-[11px] text-slate-400">Tile disponibile</span>
+      <span className="text-[11px] text-slate-400">Free tile</span>
     </div>
     <div className="flex-1 flex items-center justify-center">
-      <button
+      {!readOnly && <button
         type="button"
         onClick={onAdd}
-        title={`Configura il tile N°${slot} con l'assistente`}
+        title={`Configure tile No. ${slot} with the assistant`}
         className="w-10 h-10 rounded-full border border-slate-300 bg-white text-slate-500 hover:text-purple-700 hover:border-purple-400 hover:bg-purple-50 shadow-2xs flex items-center justify-center transition-colors cursor-pointer"
       >
         <Plus className="w-5 h-5" />
-      </button>
+      </button>}
     </div>
   </div>
 );
 
-export const Dashboard: React.FC<DashboardProps> = ({ items, phases, tiles, onAddTile, onDeleteTile, onSelectItem }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ items, phases, tiles, onAddTile, onDeleteTile, onSelectItem, readOnly = false }) => {
   const slots = Array.from({ length: DASHBOARD_SLOTS }, (_, i) => i + 1);
 
   return (
@@ -200,13 +202,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, phases, tiles, onAd
                 items={items}
                 phases={phases}
                 onSelectItem={onSelectItem}
+                readOnly={readOnly}
                 onDelete={() => {
-                  if (window.confirm(`Rimuovere il tile N°${slot} "${tile.title}"?`)) onDeleteTile(slot);
+                  if (window.confirm(`Remove tile No. ${slot} "${tile.title}"?`)) onDeleteTile(slot);
                 }}
               />
             );
           }
-          return <EmptyTile key={slot} slot={slot} onAdd={() => onAddTile(slot)} />;
+          return <EmptyTile key={slot} slot={slot} readOnly={readOnly} onAdd={() => onAddTile(slot)} />;
         })}
       </div>
     </div>

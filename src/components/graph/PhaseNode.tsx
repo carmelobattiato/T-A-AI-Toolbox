@@ -12,6 +12,7 @@ interface PhaseNodeData {
   ideasCount: number;
   needsCount: number;
   onSelect: (phaseId: string) => void;
+  readOnly?: boolean;
   onAddTool: (phaseId: string) => void;
   onAddIdea: (phaseId: string) => void;
   onAddNeed: (phaseId: string) => void;
@@ -26,6 +27,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
     ideasCount,
     needsCount,
     onSelect,
+    readOnly = false,
     onAddTool,
     onAddIdea,
     onAddNeed
@@ -59,7 +61,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
       />
 
       {/* Top Add Button (+) with vertical stem */}
-      <div className="absolute top-[-28px] left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
+      {!readOnly && <div className="absolute top-[-28px] left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
         <div className="relative">
           <button
             type="button"
@@ -67,7 +69,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
               e.stopPropagation();
               setTopMenuOpen(!topMenuOpen);
             }}
-            title="Aggiungi Tool o WiP per questa fase"
+            title="Add a Tool or WiP for this phase"
             className="w-5 h-5 rounded-full bg-white border border-blue-300 shadow-sm hover:border-blue-500 hover:scale-110 transition-all flex items-center justify-center text-blue-600 hover:bg-blue-50"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -88,7 +90,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded hover:bg-blue-50 text-blue-700 transition-colors text-left"
               >
                 <Wrench className="w-3.5 h-3.5" />
-                <span>Aggiungi Tool</span>
+                <span>Add Tool</span>
               </button>
               <button
                 type="button"
@@ -99,14 +101,14 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded hover:bg-purple-50 text-purple-700 transition-colors text-left"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Aggiungi WiP</span>
+                <span>Add WiP</span>
               </button>
             </div>
           )}
         </div>
         {/* Subtle vertical connector stem */}
         <div className="w-[1.5px] h-2 bg-blue-300" />
-      </div>
+      </div>}
 
       {/* Main Chevron Shape (Clickable) */}
       <div
@@ -156,7 +158,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
 
           {/* Phase Icon */}
           <div className="mb-1 transition-transform duration-200 group-hover:scale-110">
-            {getPhaseIcon(phase.position, phase.title)}
+            {getPhaseIcon(phase.position, phase.title, phase.icon)}
           </div>
 
           {/* Phase Name */}
@@ -179,7 +181,8 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
         </div>
       </div>
 
-      {/* Bottom Add Button (+) for Esigenze with stem */}
+      {/* Bottom Add Button (+) for Needs with stem */}
+      {/* Needs can be submitted by anyone, even without login */}
       <div className="absolute bottom-[-28px] left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
         <div className="w-[1.5px] h-2 bg-emerald-300" />
         <button
@@ -188,7 +191,7 @@ export const PhaseNode: React.FC<{ data: PhaseNodeData }> = ({ data }) => {
             e.stopPropagation();
             onAddNeed(phase.id);
           }}
-          title="Aggiungi Esigenza per questa fase"
+          title="Add a Need for this phase"
           className="w-5 h-5 rounded-full bg-white border border-emerald-300 shadow-sm hover:border-emerald-500 hover:scale-110 transition-all flex items-center justify-center text-emerald-600 hover:bg-emerald-50"
         >
           <Plus className="w-3.5 h-3.5" />

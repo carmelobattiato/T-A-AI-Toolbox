@@ -22,10 +22,48 @@ import {
   Compass,
   Repeat,
   ShieldCheck,
-  FolderGit2
+  FolderGit2,
+  type LucideIcon,
 } from 'lucide-react';
+import { IconKey, isIconKey } from './iconKeys.ts';
 
-export function getPhaseIcon(position: number, customTitle?: string): React.ReactNode {
+// Every icon the app uses, offered in the forms. The key is what gets stored.
+export const ICON_OPTIONS: { key: IconKey; label: string; Icon: LucideIcon }[] = [
+  { key: 'document', label: 'Document', Icon: FileText },
+  { key: 'search', label: 'Search / assessment', Icon: Search },
+  { key: 'chart', label: 'Chart / analysis', Icon: BarChart3 },
+  { key: 'database', label: 'Data / readiness', Icon: Database },
+  { key: 'cog', label: 'Automation / DevOps', Icon: Cog },
+  { key: 'check', label: 'Check / validation', Icon: ClipboardCheck },
+  { key: 'transfer', label: 'Migration / cutover', Icon: ArrowLeftRight },
+  { key: 'users', label: 'People / handover', Icon: Users },
+  { key: 'compass', label: 'Compass / guidance', Icon: Compass },
+  { key: 'layers', label: 'Layers / stack', Icon: Layers },
+  { key: 'lightbulb', label: 'Idea', Icon: Lightbulb },
+  { key: 'sparkles', label: 'AI / sparkle', Icon: Sparkles },
+  { key: 'cpu', label: 'Agent / model', Icon: Cpu },
+  { key: 'wrench', label: 'Tool', Icon: Wrench },
+  { key: 'boxes', label: 'Inventory', Icon: Boxes },
+  { key: 'filecode', label: 'Code / IaC', Icon: FileCode },
+  { key: 'share', label: 'Graph / dependencies', Icon: Share2 },
+  { key: 'list', label: 'Task list', Icon: ListTodo },
+  { key: 'checkcircle', label: 'Test / done', Icon: CheckCircle2 },
+  { key: 'message', label: 'Chat / question', Icon: MessageSquare },
+  { key: 'foldergit', label: 'Repository / diagrams', Icon: FolderGit2 },
+  { key: 'shield', label: 'Security / monitoring', Icon: ShieldCheck },
+  { key: 'repeat', label: 'Loop / recurring', Icon: Repeat },
+];
+
+const ICON_BY_KEY = new Map(ICON_OPTIONS.map(o => [o.key, o.Icon]));
+
+// The icon chosen by the user, or undefined when the field is empty or not a known key
+function chosenIcon(key: unknown): LucideIcon | undefined {
+  return isIconKey(key) ? ICON_BY_KEY.get(key) : undefined;
+}
+
+export function getPhaseIcon(position: number, customTitle?: string, iconKey?: unknown): React.ReactNode {
+  const Chosen = chosenIcon(iconKey);
+  if (Chosen) return <Chosen className="w-6 h-6 text-slate-700" />;
   const title = (customTitle || '').toLowerCase();
   if (title.includes('pre-sales') || title.includes('estimation') || position === 0) {
     return <FileText className="w-6 h-6 text-slate-700" />;
@@ -54,8 +92,13 @@ export function getPhaseIcon(position: number, customTitle?: string): React.Reac
   return <Compass className="w-6 h-6 text-indigo-500" />;
 }
 
-export function getItemIcon(type: string, title: string = ''): React.ReactNode {
+export function getItemIcon(type: string, title: string = '', iconKey?: unknown): React.ReactNode {
   const t = title.toLowerCase();
+  const Chosen = chosenIcon(iconKey);
+  if (Chosen) {
+    const tone = type === 'TOOL' ? 'text-blue-600' : type === 'IDEA' ? 'text-purple-600' : 'text-emerald-600';
+    return <Chosen className={`w-5 h-5 ${tone}`} />;
+  }
   if (type === 'TOOL') {
     if (t.includes('document')) return <FileText className="w-5 h-5 text-blue-600" />;
     if (t.includes('draw') || t.includes('diagram')) return <Share2 className="w-5 h-5 text-orange-500" />;

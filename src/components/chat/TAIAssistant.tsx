@@ -18,37 +18,37 @@ import {
 } from 'lucide-react';
 
 const CREATE_FIELD_LABELS: Record<string, string> = {
-  title: 'Titolo',
-  description: 'Descrizione',
-  summary: 'Sintesi',
+  title: 'Title',
+  description: 'Description',
+  summary: 'Summary',
   owner: 'Owner',
-  problem: 'Problema',
-  requirements: 'Requisiti',
-  expectedBenefit: 'Beneficio atteso',
-  currentProcess: 'Processo attuale',
-  desiredTool: 'Tool desiderato',
-  desiredOutcome: 'Risultato atteso',
-  generalizationRequired: 'Da generalizzare',
-  activities: 'Attività',
-  targetIndex: 'Posizione',
+  problem: 'Problem',
+  requirements: 'Requirements',
+  expectedBenefit: 'Expected benefit',
+  currentProcess: 'Current process',
+  desiredTool: 'Desired tool',
+  desiredOutcome: 'Expected outcome',
+  generalizationRequired: 'To be generalized',
+  activities: 'Activities',
+  targetIndex: 'Position',
   githubUrl: 'GitHub',
   catalogUrl: 'Catalog',
   demoUrl: 'Demo',
   slot: 'Tile N°',
-  chart: 'Grafico',
-  groupBy: 'Asse x',
-  itemTypes: 'Elementi',
-  where: 'Filtri',
-  sortBy: 'Ordina per',
-  order: 'Ordine',
-  limit: 'Quanti mostrarne',
+  chart: 'Chart',
+  groupBy: 'X axis',
+  itemTypes: 'Items',
+  where: 'Filters',
+  sortBy: 'Sort by',
+  order: 'Order',
+  limit: 'How many to show',
 };
 
 function formatFieldValue(key: string, value: unknown): string {
   if (key === 'chart') return CHART_LABELS[value as keyof typeof CHART_LABELS] ?? String(value);
   if (key === 'groupBy') return GROUP_BY_LABELS[value as keyof typeof GROUP_BY_LABELS] ?? String(value);
   if (key === 'sortBy') return SORT_BY_LABELS[value as keyof typeof SORT_BY_LABELS] ?? String(value);
-  if (key === 'order') return value === 'asc' ? 'Crescente (priorità: dalla più alta)' : 'Decrescente';
+  if (key === 'order') return value === 'asc' ? 'Ascending (priority: highest first)' : 'Descending';
   if (key === 'where') return describeWhere(value as Parameters<typeof describeWhere>[0]);
   if (key === 'itemTypes' && Array.isArray(value)) {
     return value.map(t => TYPE_LABELS[t as keyof typeof TYPE_LABELS] ?? String(t)).join(', ');
@@ -60,9 +60,13 @@ interface TAIAssistantProps {
   onRefreshData: () => Promise<void>;
   isDrawerOpen?: boolean;
   presetRequest?: { text: string; nonce: number } | null;
+  // Map the assistant works on, and whether the user may change it
+  practiceId: string;
+  practiceName: string;
+  canEdit: boolean;
 }
 
-export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDrawerOpen, presetRequest }) => {
+export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDrawerOpen, presetRequest, practiceId, practiceName, canEdit }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -72,8 +76,8 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
       id: 'welcome',
       role: 'assistant',
       content:
-        'Ciao! Sono il **T&A Assistant**. Conosco l\'intero processo end-to-end del lavoro Technology & Architecture, i tool esistenti, i WiP in valutazione e le esigenze aperte.\n\nPosso rispondere alle tue domande o **creare, modificare ed eliminare elementi** nella mappa (con conferma preventiva).',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        'Hi! I\'m the **ADM Assistant**. I know the end-to-end process of the practice you are working on, the existing tools, the WiPs under evaluation and the open needs.\n\nI can answer your questions or **create, edit and delete items** on the map (with prior confirmation).',
+      timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
 
@@ -118,7 +122,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
       id: `msg-${Date.now()}`,
       role: 'user',
       content: textToSend.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
     };
 
     setMessages(prev => [...prev, userMsg]);
@@ -129,11 +133,11 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg.content }),
+        body: JSON.stringify({ message: userMsg.content, practiceId }),
       });
 
       if (!res.ok) {
-        throw new Error('Errore durante la comunicazione con l\'assistente');
+        throw new Error('Error communicating with the assistant');
       }
 
       const data = await res.json();
@@ -144,7 +148,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         content: data.reply,
         actionSummary: data.actionSummary,
         pendingAction: data.pendingAction,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -159,8 +163,8 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         {
           id: `msg-${Date.now()}-err`,
           role: 'assistant',
-          content: 'Si è verificato un errore nel processare la richiesta. Verifica la connessione e riprova.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: 'An error occurred while processing the request. Check your connection and try again.',
+          timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     } finally {
@@ -187,12 +191,13 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: 'Confermo l\'operazione',
+          message: 'Confirm operation',
+          practiceId,
           confirmedAction: action,
         }),
       });
 
-      if (!res.ok) throw new Error('Errore durante la conferma dell\'operazione');
+      if (!res.ok) throw new Error('Error confirming the operation');
       const data = await res.json();
 
       const confirmReplyMsg: ChatMessage = {
@@ -200,7 +205,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         role: 'assistant',
         content: data.reply,
         actionSummary: data.actionSummary,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages(prev => [...prev, confirmReplyMsg]);
@@ -211,8 +216,8 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         {
           id: `msg-${Date.now()}-err`,
           role: 'assistant',
-          content: 'Errore durante l\'esecuzione dell\'azione confermata.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: 'Error while executing the confirmed action.',
+          timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     } finally {
@@ -238,19 +243,20 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: 'Annulla operazione',
+          message: 'Cancel operation',
+          practiceId,
           cancelAction: true,
         }),
       });
 
-      if (!res.ok) throw new Error('Errore durante l\'annullamento');
+      if (!res.ok) throw new Error('Error while cancelling');
       const data = await res.json();
 
       const cancelReplyMsg: ChatMessage = {
         id: `msg-${Date.now()}-cancelled`,
         role: 'assistant',
         content: data.reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages(prev => [...prev, cancelReplyMsg]);
@@ -261,8 +267,8 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
         {
           id: `msg-${Date.now()}-cancelled`,
           role: 'assistant',
-          content: `Operazione annullata. Nessuna modifica è stata apportata a **"${action.targetTitle}"**.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: `Operation cancelled. No changes were made to **"${action.targetTitle}"**.`,
+          timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     } finally {
@@ -271,12 +277,12 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
   };
 
   const quickPrompts = [
-    'Che tool abbiamo per Assessment?',
-    'Quali tool coprono più fasi?',
-    'Quali tool sono da generalizzare?',
-    'Ci sono esigenze scoperte?',
-    'Aggiungi un\'esigenza a Readiness: Terraform automatizzato',
-    'Aggiungi come idea un MCP per Kubernetes',
+    'Which tools do we have for Assessment?',
+    'Which tools cover multiple phases?',
+    'Which tools need to be generalized?',
+    'Are there uncovered needs?',
+    'Add a need to Readiness: automated Terraform',
+    'Add as WiP an MCP for Kubernetes',
   ];
 
   return (
@@ -285,6 +291,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
       {!isOpen && (
         <button
           type="button"
+          data-tour="assistant"
           onClick={() => setIsOpen(true)}
           className={`fixed bottom-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700 text-white font-semibold text-xs shadow-lg shadow-purple-500/30 hover:shadow-xl hover:scale-105 transition-all duration-300 flex items-center gap-2 group cursor-pointer ${
             isDrawerOpen ? 'right-[440px] md:right-[480px]' : 'right-6'
@@ -293,7 +300,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
           <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
             <Sparkles className="w-3.5 h-3.5 text-white" />
           </div>
-          <span>T&A Assistant</span>
+          <span>ADM Assistant</span>
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
       )}
@@ -317,7 +324,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
               </div>
               <div>
                 <h3 className="font-bold text-xs flex items-center gap-1.5">
-                  <span>T&A Assistant</span>
+                  <span>ADM Assistant</span>
                   <span className="text-[9px] bg-emerald-500/30 text-emerald-200 px-1.5 py-0.2 rounded-full font-medium">
                     online
                   </span>
@@ -331,7 +338,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="p-1.5 text-purple-200 hover:text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer"
-                title={isExpanded ? 'Riduci' : 'Espandi'}
+                title={isExpanded ? 'Collapse' : 'Expand'}
               >
                 {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </button>
@@ -339,7 +346,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="p-1.5 text-purple-200 hover:text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer"
-                title="Chiudi chat"
+                title="Close chat"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -399,14 +406,14 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                         <span>
                           {msg.pendingAction.type === 'DELETE_ITEM'
-                            ? 'Conferma eliminazione elemento'
+                            ? 'Confirm item deletion'
                             : msg.pendingAction.type === 'CREATE_ITEM'
-                            ? 'Conferma creazione elemento'
+                            ? 'Confirm item creation'
                             : msg.pendingAction.type === 'CREATE_PHASE'
-                            ? 'Conferma creazione fase'
+                            ? 'Confirm phase creation'
                             : msg.pendingAction.type === 'CREATE_TILE'
-                            ? 'Conferma configurazione tile'
-                            : 'Conferma modifica elemento'}
+                            ? 'Confirm tile configuration'
+                            : 'Confirm item edit'}
                         </span>
                       </div>
                       <div className="text-[11px] leading-snug text-slate-800 bg-white/70 p-2 rounded-lg border border-amber-200">
@@ -422,28 +429,28 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                               ))}
                             {msg.pendingAction.payload?.replaces && (
                               <div className="mt-1 text-[10px] text-amber-700 font-medium">
-                                Sostituisce il tile attuale "{msg.pendingAction.payload.replaces}".
+                                Replaces the current tile "{msg.pendingAction.payload.replaces}".
                               </div>
                             )}
                             {msg.pendingAction.payload?.phaseTitles?.length > 0 && (
                               <div className="mt-1 text-slate-600">
-                                Fasi: <strong className="text-slate-900">{msg.pendingAction.payload.phaseTitles.join(', ')}</strong>
+                                Phases: <strong className="text-slate-900">{msg.pendingAction.payload.phaseTitles.join(', ')}</strong>
                               </div>
                             )}
                           </>
                         ) : (
                           <>
                             <div>
-                              Elemento target: <strong>{msg.pendingAction.targetTitle}</strong>
+                              Target item: <strong>{msg.pendingAction.targetTitle}</strong>
                             </div>
                             {msg.pendingAction.payload?.title && (
                               <div className="mt-1 text-slate-600">
-                                Nuovo titolo: <strong className="text-slate-900">{msg.pendingAction.payload.title}</strong>
+                                New title: <strong className="text-slate-900">{msg.pendingAction.payload.title}</strong>
                               </div>
                             )}
                             {msg.pendingAction.type === 'DELETE_ITEM' && (
                               <div className="mt-1 text-[10px] text-red-600 font-medium">
-                                L'elemento e le sue relazioni verranno rimosse dalla mappa.
+                                The item and its relations will be removed from the map.
                               </div>
                             )}
                           </>
@@ -467,12 +474,12 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                           )}
                           <span>
                             {msg.pendingAction.type === 'DELETE_ITEM'
-                              ? 'Conferma eliminazione'
+                              ? 'Confirm deletion'
                               : msg.pendingAction.type === 'CREATE_ITEM' || msg.pendingAction.type === 'CREATE_PHASE'
-                              ? 'Conferma creazione'
+                              ? 'Confirm creation'
                               : msg.pendingAction.type === 'CREATE_TILE'
-                              ? 'Conferma tile'
-                              : 'Conferma modifica'}
+                              ? 'Confirm tile'
+                              : 'Confirm edit'}
                           </span>
                         </button>
                         <button
@@ -482,7 +489,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                           className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-xs shadow-xs flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                         >
                           <X className="w-3.5 h-3.5" />
-                          <span>Annulla</span>
+                          <span>Cancel</span>
                         </button>
                       </div>
                     </div>
@@ -491,14 +498,14 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                   {msg.pendingAction && msg.pendingAction.status === 'CONFIRMED' && (
                     <div className="mt-2.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-800 font-semibold flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Operazione confermata ed eseguita con successo</span>
+                      <span>Operation confirmed and executed successfully</span>
                     </div>
                   )}
 
                   {msg.pendingAction && msg.pendingAction.status === 'CANCELLED' && (
                     <div className="mt-2.5 px-2.5 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-[10px] text-slate-600 font-semibold flex items-center gap-1.5">
                       <X className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>Operazione annullata dall'utente</span>
+                      <span>Operation cancelled by the user</span>
                     </div>
                   )}
 
@@ -512,7 +519,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                 </div>
 
                 {msg.role === 'user' && (
-                  <div className="w-6 h-6 rounded-full bg-purple-700 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs" title="Tu">
+                  <div className="w-6 h-6 rounded-full bg-purple-700 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs" title="You">
                     <User className="w-3.5 h-3.5" />
                   </div>
                 )}
@@ -528,7 +535,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse delay-100" />
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse delay-200" />
-                  <span className="text-[11px] text-slate-500 ml-1">L'assistente sta elaborando...</span>
+                  <span className="text-[11px] text-slate-500 ml-1">The assistant is working...</span>
                 </div>
               </div>
             )}
@@ -537,6 +544,11 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
 
           {/* Input Box */}
           <div className="p-3 border-t border-slate-200 bg-white">
+            {!canEdit && (
+              <p className="mb-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[10px] text-amber-800">
+                Read-only on <strong>{practiceName}</strong>: I can answer questions and record new <strong>needs</strong>; to create or edit other items you need to sign in with an authorised user.
+              </p>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -555,7 +567,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                     handleSend();
                   }
                 }}
-                placeholder="Chiedi informazioni, oppure scrivi 'elimina [nome]' o 'modifica'..."
+                placeholder="Ask a question, or type 'delete [name]' or 'edit'..."
                 disabled={isLoading}
                 className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600 text-xs bg-slate-50 focus:bg-white text-slate-800 transition-colors resize-none overflow-y-auto max-h-[100px] leading-snug"
               />
@@ -563,7 +575,7 @@ export const TAIAssistant: React.FC<TAIAssistantProps> = ({ onRefreshData, isDra
                 type="submit"
                 disabled={!input.trim() || isLoading}
                 className="p-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40 transition-colors shadow-xs cursor-pointer"
-                title="Invia"
+                title="Send"
               >
                 <Send className="w-4 h-4" />
               </button>

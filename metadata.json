@@ -1,5 +1,5 @@
 {
-  "name": "T&A AI Toolbox",
+  "name": "ADM Project Blueprint",
   "description": "Mappa intelligente e collaborativa del lavoro Technology & Architecture: processi a matitone, tool, idee, esigenze e assistente AI.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

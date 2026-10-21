@@ -21,3 +21,6 @@ data/*.json.*
 
 # Copie di backup (contengono i dati e le chiavi delle impostazioni)
 backups/
+
+# Output presentazione (mockup, script, pptx, screenshot)
+PRESENTAZIONE/

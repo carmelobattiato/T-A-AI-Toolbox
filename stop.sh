@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "Arresto dei container T&A AI Toolbox..."
+echo "Arresto dei container ADM Project Blueprint..."
 
 if docker compose version &> /dev/null; then
     docker compose down

@@ -13,6 +13,7 @@ interface PhaseDrawerProps {
   onAddNeed: (phaseId: string) => void;
   onEditPhase: (phase: Phase) => void;
   onDeletePhase: (phaseId: string) => void;
+  readOnly?: boolean;
 }
 
 export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
@@ -25,6 +26,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
   onAddNeed,
   onEditPhase,
   onDeletePhase,
+  readOnly = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'tools' | 'ideas' | 'needs'>('tools');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -46,18 +48,18 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <button
+          {!readOnly && <button
             type="button"
             onClick={() => onEditPhase(phase)}
-            title="Modifica fase"
+            title="Edit phase"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
           >
             <Edit3 className="w-4 h-4" />
-          </button>
+          </button>}
           <button
             type="button"
             onClick={onClose}
-            title="Chiudi drawer"
+            title="Close drawer"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
           >
             <X className="w-4 h-4" />
@@ -75,16 +77,16 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-slate-900 text-sm">{phase.title}</h3>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-              {phase.description || 'Nessuna descrizione per questa fase.'}
+              {phase.description || 'No description for this phase.'}
             </p>
           </div>
         </div>
 
-        {/* Attività Principali */}
+        {/* Main activities */}
         {phase.activities && phase.activities.length > 0 && (
           <div>
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-              Attività principali
+              Main activities
             </h4>
             <ul className="space-y-1.5">
               {phase.activities.map((act, idx) => (
@@ -131,7 +133,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                   : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
-              Esigenze ({phaseNeeds.length})
+              Needs ({phaseNeeds.length})
             </button>
           </div>
         </div>
@@ -143,10 +145,10 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
               {phaseTools.length === 0 ? (
                 <div className="text-center py-6 px-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <p className="text-xs text-slate-500 font-medium">
-                    Nessun Tool mappato per questa fase.
+                    No Tool mapped for this phase.
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Rappresenta un potenziale gap di automazione!
+                    This is a potential automation gap!
                   </p>
                 </div>
               ) : (
@@ -172,12 +174,12 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                       <div className="flex items-center gap-1.5 mt-1.5">
                         {tool.generalizationRequired && (
                           <span className="text-[8.5px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                            Da generalizzare
+                            To be generalized
                           </span>
                         )}
                         {tool.phaseIds.length > 1 && (
                           <span className="text-[8.5px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
-                            Copre {tool.phaseIds.length} fasi
+                            Covers {tool.phaseIds.length} phases
                           </span>
                         )}
                       </div>
@@ -185,14 +187,14 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                   </div>
                 ))
               )}
-              <button
+              {!readOnly && <button
                 type="button"
                 onClick={() => onAddTool(phase.id)}
                 className="w-full mt-3 py-2 px-3 border border-dashed border-blue-300 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Aggiungi Tool</span>
-              </button>
+                <span>Add Tool</span>
+              </button>}
             </div>
           )}
 
@@ -201,7 +203,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
               {phaseIdeas.length === 0 ? (
                 <div className="text-center py-6 px-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <p className="text-xs text-slate-500 font-medium">
-                    Nessun WiP per questa fase.
+                    No WiP for this phase.
                   </p>
                 </div>
               ) : (
@@ -230,7 +232,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                         </span>
                         {idea.phaseIds.length > 1 && (
                           <span className="text-[8.5px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                            {idea.phaseIds.length} fasi
+                            {idea.phaseIds.length} phases
                           </span>
                         )}
                       </div>
@@ -238,14 +240,14 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                   </div>
                 ))
               )}
-              <button
+              {!readOnly && <button
                 type="button"
                 onClick={() => onAddIdea(phase.id)}
                 className="w-full mt-3 py-2 px-3 border border-dashed border-purple-300 rounded-lg text-xs font-semibold text-purple-600 hover:bg-purple-50 flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Aggiungi WiP</span>
-              </button>
+                <span>Add WiP</span>
+              </button>}
             </div>
           )}
 
@@ -254,7 +256,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
               {phaseNeeds.length === 0 ? (
                 <div className="text-center py-6 px-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <p className="text-xs text-slate-500 font-medium">
-                    Nessuna Esigenza registrata per questa fase.
+                    No Need recorded for this phase.
                   </p>
                 </div>
               ) : (
@@ -287,7 +289,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                 className="w-full mt-3 py-2 px-3 border border-dashed border-emerald-300 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Aggiungi Esigenza</span>
+                <span>Add Need</span>
               </button>
             </div>
           )}
@@ -295,12 +297,12 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
       </div>
 
       {/* Footer info & delete button */}
-      {!phase.isCore && (
+      {!phase.isCore && !readOnly && (
         <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">Fase personalizzata</span>
+          <span className="text-[11px] text-slate-400">Custom phase</span>
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
-              <span className="text-[11px] font-bold text-red-700">Eliminare?</span>
+              <span className="text-[11px] font-bold text-red-700">Delete?</span>
               <button
                 type="button"
                 onClick={() => {
@@ -309,14 +311,14 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
                 }}
                 className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
               >
-                Sì, elimina
+                Yes, delete
               </button>
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
                 className="px-2 py-1 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-xs transition-colors cursor-pointer"
               >
-                Annulla
+                Cancel
               </button>
             </div>
           ) : (
@@ -326,7 +328,7 @@ export const PhaseDrawer: React.FC<PhaseDrawerProps> = ({
               className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1.5 rounded hover:bg-red-50 transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Elimina fase</span>
+              <span>Delete phase</span>
             </button>
           )}
         </div>

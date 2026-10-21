@@ -1,6 +1,25 @@
-# Changelog — T&A AI Toolbox
+# Changelog — ADM Project Blueprint
 
 ## [Unreleased]
+
+---
+
+## [0.4] — 2026-10-21
+
+
+- **Rinomina** da "T&A AI Toolbox" a "ADM Project Blueprint" (interfaccia, assistente, script e documentazione). Nomi tecnici di container e manifest Kubernetes invariati.
+- **Practice.** Ogni practice (T&A, Operations, Developer, …) ha la propria mappa di fasi, tool, WiP, esigenze, dashboard e registro modifiche. L'etichetta "Fasi Processo" nella mappa apre il menu per cambiare practice. Una nuova practice parte da una sola fase "Base phase" modificabile; **T&A** mantiene le sue fasi e i suoi dati (migrazione automatica: tutto ciò che esiste già diventa della practice `ta`, nessuna perdita). Nuovi campi `practiceId` su fasi, elementi, tile e log; `practices` in `db.json`. API: `GET /api/practices`, `POST/PATCH/DELETE /api/practices` (admin); `?practice=` su fasi, elementi, tile e log; `practiceId` nel body di creazione.
+- **Utenti e ruoli.** Lettura aperta a tutti; modifiche solo dopo il login. Ruoli: **admin** (tutte le practice, Impostazioni) ed **editor** (solo le practice spuntate). Login con username e password (hash scrypt, cookie di sessione `HttpOnly` + `SameSite=Strict`, 12 ore, blocco dopo 5 tentativi errati). Utenti in `data/users.json` (permessi `0600`, non versionato, incluso in `backup-db.sh`). Il server applica i permessi su ogni scrittura, compresa l'assistente: una conferma fuori dalle practice abilitate viene rifiutata anche se il payload è manomesso.
+- **Admin di default** al primo avvio: `admin` / `Admin!2026` (cambiabile con `ADMIN_INITIAL_PASSWORD` prima del primo avvio). La password è temporanea: va cambiata al primo accesso, e fino ad allora le scritture sono bloccate. Le password impostate da un admin sono a loro volta temporanee.
+- **Impostazioni** (solo admin) con tre tab: Motore AI, Utenti e ruoli (checkbox per practice), Practice (crea, rinomina, elimina). Chi non è admin non vede più le impostazioni AI né può modificarle. Non si può eliminare o degradare l'ultimo admin.
+- **`x-forwarded-user` non è più l'identità**: l'autore delle modifiche è l'utente loggato. Dietro un reverse proxy SSO l'header viene ignorato; resta valido il consiglio di non esporre il backend direttamente.
+- Le route sono ora in `server/routes.ts`, condiviso da `server.ts` e `server/standalone.ts`. `start_local.sh` avvia l'app senza Docker.
+- **Terminologia:** "pillar" è stato rinominato in **practice** ovunque (interfaccia, API `/api/practices`, campi `practiceId` e `practices`). I dati già salvati con i vecchi nomi (`db.json`, `log.json`, `users.json`) vengono convertiti automaticamente al primo avvio.
+- **Applicazione in inglese:** interfaccia, messaggi del server e testi dell'assistente sono ora in inglese (`<html lang="en">`). I dati nel database non vengono tradotti: fasi, tool e esigenze di esempio restano in italiano, così come i dati già salvati (compreso il titolo del tile predefinito già presente: sui nuovi database è "Tools per customer"). Il motore a regole dell'assistente capisce comandi sia in inglese sia in italiano; con un modello LLM l'assistente risponde nella lingua dell'utente.
+- **Esigenze aperte a tutti:** chiunque, anche senza login, può proporre un'esigenza (dal "+" sotto le fasi o dall'assistente). Tool, WiP, fasi e modifiche restano riservati. Le esigenze inviate senza accesso sono limitate a 20 l'ora per indirizzo e risultano create da `anonymous`.
+- **Splash screen** iniziale con la definizione di Accenture Delivery Methods (una volta per sessione del browser) e tooltip con lo stesso testo sul nome dell'applicazione nell'header. **Tour introduttivo** di 5 passi al primo accesso, con "Non mostrare più" e pulsante **?** per rivederlo.
+- **Icone scelte dall'utente.** Tool, WiP, esigenze e fasi hanno un selettore di icone (23 icone già usate nell'app) nei rispettivi form, con "Default" per tornare all'icona automatica basata sul titolo. Nuovo campo opzionale `icon` su elementi e fasi (chiave dell'icona, validata dal server: una chiave sconosciuta viene ignorata; `null` ripristina il Default). Le chiavi sono in `src/utils/iconKeys.ts`. I database esistenti non richiedono migrazioni. Gli elementi creati dall'assistente usano il Default.
+- Da sapere: backend sempre a 1 replica (sessioni stateless, ma blocco login e azioni in sospeso sono in memoria); eliminare una practice cancella tutta la sua mappa.
 
 ---
 
@@ -170,7 +189,7 @@ Modifiche rispetto al commit `5452ca4` (*feat(ai): integrate OpenAI support and 
 
 - `data/settings.json` (contiene le API key) e `data/db.json` (i dati dell'utente) sono ora in `.gitignore` e non più tracciati: GitHub blocca il push di una chiave GCP trovata in `settings.json`, e il database non va condiviso nel repository. Alla prima esecuzione, anche se la cartella `data/` non esiste, il backend crea `db.json` (8 fasi e 12 elementi di esempio, con `tags` e `customers` vuoti) e `settings.json` di default, senza chiavi. Resta `data/.gitkeep` perché la cartella esista in un checkout pulito (necessaria al bind mount di `docker-compose.yml` e al `COPY data/` del Dockerfile).
 - Nuovo `.dockerignore`: `data/db.json`, `data/settings.json` e `data/backups` non finiscono più nell'immagine (prima un build locale incorporava dati e chiavi della macchina). L'initContainer `seed-data` di Kubernetes copia `db.json` sul volume solo se presente nell'immagine; altrimenti il backend genera i dati di default. I volumi già popolati non cambiano. La cronologia precedente (commit `5452ca4`) contiene versioni passate di `data/settings.json`: verificare che non includano chiavi ancora valide e, se sì, ruotarle.
-- Il piè di pagina dell'header riporta "developed by Carmelo Battiato - V.1.0.2" (testo fisso in `Header.tsx`; `package.json` resta a `0.0.0`).
+- Il piè di pagina dell'header riporta "developed by Carmelo Battiato - V.1.0.2" (testo fisso in `Header.tsx`, ora V.1.1.0; `package.json` resta a `0.0.0`).
 
 **File toccati in v1.0.2**
 

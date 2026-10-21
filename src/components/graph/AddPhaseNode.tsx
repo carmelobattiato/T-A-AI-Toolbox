@@ -23,7 +23,7 @@ export const AddPhaseNode: React.FC<{ data: AddPhaseNodeData }> = ({ data }) => 
           e.stopPropagation();
           onAddPhase(targetIndex);
         }}
-        title={`Inserisci nuova fase alla posizione ${targetIndex}`}
+        title={`Insert new phase at position ${targetIndex}`}
         className="w-7 h-7 rounded-full bg-white border border-slate-300 shadow-sm hover:border-indigo-500 hover:bg-indigo-50 hover:scale-115 transition-all flex items-center justify-center text-slate-500 hover:text-indigo-600 group"
       >
         <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />

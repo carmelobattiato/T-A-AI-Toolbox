@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo "  T&A AI Toolbox - Costruzione Immagini Docker Dual-Container"
+echo "  ADM Project Blueprint - Costruzione Immagini Docker Dual-Container"
 echo "=========================================================="
 
 # Ensure data directory exists

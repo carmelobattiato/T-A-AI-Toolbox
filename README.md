@@ -1,4 +1,4 @@
-# 🚀 T&A AI Toolbox
+# 🚀 ADM Project Blueprint
 
 <div align="center">
 
@@ -47,7 +47,7 @@ Visualizzazione grafica end-to-end con fasi a *matitone*, catalogazione di Tool,
 
 ## 📖 Panoramica
 
-**T&A AI Toolbox** è una piattaforma web collaborativa progettata per risolvere la frammentazione informativa e mappare in modo trasparente l'intero ecosistema di progetti, strumenti e necessità del team Technology & Architecture.
+**ADM Project Blueprint** è una piattaforma web collaborativa progettata per risolvere la frammentazione informativa e mappare in modo trasparente l'intero ecosistema di progetti, strumenti e necessità del team Technology & Architecture.
 
 L'applicazione consente a chiunque si colleghi di:
 1. **Visualizzare la catena del valore**: Le fasi del processo sono posizionate orizzontalmente come blocchi centrali a *matitone* (chevron) ordinati logicamente.
@@ -58,7 +58,7 @@ L'applicazione consente a chiunque si colleghi di:
 3. **Mappare relazioni complesse molti-a-molti**: Un singolo Tool o Esigenza può collegarsi contemporaneamente a una o molteplici fasi, evidenziando strumenti trasversali.
 4. **Interagire con il Copilot T&A Assistant**: Un assistente AI integrato capace di rispondere sullo stato dei processi, identificare gap, e manipolare attivamente il grafo creando, modificando o eliminando nodi in sicurezza (con card di conferma preventiva interattiva).
 5. **Configurare provider AI on-the-fly**: Possibilità di collegare qualsiasi endpoint compatibile OpenAI (es. server interno aziendale, Ollama, vLLM, Azure OpenAI, Groq) oltre a Google Gemini.
-6. **Accesso aperto senza attriti**: Nessuna gestione rigida degli account individuali; l'ambiente è condiviso per tutti i collaboratori con salvataggio persistente e concorrente.
+6. **Lettura aperta, scrittura controllata**: tutti consultano la mappa; chi modifica accede con il proprio utente e i permessi sono assegnati per practice.
 
 ---
 
@@ -147,10 +147,12 @@ Il sistema è strutturato come un'architettura a **due container indipendenti**,
   - Pulsante **Testa Connessione**: Verifica in tempo reale la latenza di rete e la validità dei parametri prima di salvare.
   - Salvataggio centralizzato nel file persistente `data/settings.json`.
 
-### 👥 5. Accesso Aperto & Collaborativo (Zero Friction)
-- Nessuna maschera di login o gestione rigida degli utenti: accesso immediato e libero per tutti i membri del team.
-- Badge di identità condiviso **Team T&A** con audit log centralizzato per tracciare le modifiche collaborative.
-- Sincronizzazione automatica tra client connessi.
+### 👥 5. Practice, Utenti e Ruoli
+- **Practice**: ogni practice (T&A, Operations, Developer, …) ha la propria mappa di fasi, tool, WiP, esigenze, dashboard e registro modifiche. Si cambia practice dal menu dell'etichetta "Fasi Processo"; una nuova practice parte da una sola "Base phase" modificabile.
+- **Lettura aperta, scrittura con login**: chiunque può consultare e proporre **esigenze** anche senza accesso. Per modificare serve l'accesso; gli **editor** modificano solo le practice abilitate, gli **admin** tutto.
+- **Admin iniziale**: al primo avvio viene creato `admin` / `Admin!2026` (o la password in `ADMIN_INITIAL_PASSWORD`). È temporanea: il primo accesso richiede di cambiarla.
+- **Impostazioni (solo admin)**: Motore AI, Utenti e ruoli (checkbox per practice), Practice. Utenti in `data/users.json`.
+- Audit log centralizzato che riporta l'utente di ogni modifica; sincronizzazione automatica tra client connessi.
 
 ### 🛠️ 6. Drawer Dettagliati e Gestione Elementi
 - **Item Drawer**:
@@ -204,7 +206,7 @@ docker compose up -d --build
 #### 3. Accesso all'applicazione
 - **Frontend Web UI**: [http://localhost:3000](http://localhost:3000)
 - **Backend API REST**: [http://localhost:5000/api](http://localhost:5000/api)
-- **Salvataggio Dati**: La cartella `./data/` sull'host conterrà `db.json`, `log.json` (audit log) e `settings.json`.
+- **Salvataggio Dati**: La cartella `./data/` sull'host conterrà `db.json`, `log.json` (audit log), `settings.json` e `users.json` (utenti con hash delle password).
 
 ---
 

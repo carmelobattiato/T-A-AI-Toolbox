@@ -1,6 +1,6 @@
-# T&A AI Toolbox - Architettura Dual-Container e Deployment
+# ADM Project Blueprint - Architettura Dual-Container e Deployment
 
-Questa guida descrive come eseguire **T&A AI Toolbox** come applicazione distribuita separata in **due container Docker indipendenti**:
+Questa guida descrive come eseguire **ADM Project Blueprint** come applicazione distribuita separata in **due container Docker indipendenti**:
 1. **Container 1 (Frontend)**: Nginx ultra-leggero che serve la webapp React e funge da reverse proxy verso il backend.
 2. **Container 2 (Backend + Database)**: API Express Node.js con storage persistente su file volume (`/app/data/db.json`, `/app/data/log.json` e `/app/data/settings.json`).
 

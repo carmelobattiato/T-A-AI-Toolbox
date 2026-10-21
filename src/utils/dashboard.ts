@@ -19,32 +19,32 @@ export const DASHBOARD_CHARTS: DashboardTile['chart'][] = ['bar', 'number', 'lis
 export const DASHBOARD_GROUP_BY: DashboardGroupBy[] = ['customer', 'tag', 'phase', 'type', 'owner', 'priority', 'month'];
 export const DASHBOARD_SORT_BY: DashboardSortBy[] = ['priority', 'createdAt', 'updatedAt', 'title'];
 
-export const TYPE_LABELS: Record<ItemType, string> = { TOOL: 'Tool', IDEA: 'WiP', NEED: 'Esigenze' };
-export const TYPE_LABELS_SINGULAR: Record<ItemType, string> = { TOOL: 'Tool', IDEA: 'WiP', NEED: 'Esigenza' };
+export const TYPE_LABELS: Record<ItemType, string> = { TOOL: 'Tool', IDEA: 'WiP', NEED: 'Needs' };
+export const TYPE_LABELS_SINGULAR: Record<ItemType, string> = { TOOL: 'Tool', IDEA: 'WiP', NEED: 'Need' };
 export const GROUP_BY_LABELS: Record<DashboardGroupBy, string> = {
-  customer: 'Cliente',
+  customer: 'Customer',
   tag: 'Tag',
-  phase: 'Fase',
-  type: 'Tipo',
+  phase: 'Phase',
+  type: 'Type',
   owner: 'Owner',
-  priority: 'Priorità',
-  month: 'Mese di creazione',
+  priority: 'Priority',
+  month: 'Creation month',
 };
 export const SORT_BY_LABELS: Record<DashboardSortBy, string> = {
-  priority: 'Priorità',
-  createdAt: 'Data di creazione',
-  updatedAt: 'Ultima modifica',
-  title: 'Titolo',
+  priority: 'Priority',
+  createdAt: 'Creation date',
+  updatedAt: 'Last modified',
+  title: 'Title',
 };
 export const CHART_LABELS: Record<DashboardTile['chart'], string> = {
-  bar: 'Barre verticali',
-  number: 'Numero',
-  list: 'Elenco',
+  bar: 'Vertical bars',
+  number: 'Number',
+  list: 'List',
 };
 
 export const DEFAULT_TILE: DashboardTile = {
   slot: 1,
-  title: 'Tool per cliente',
+  title: 'Tools per customer',
   chart: 'bar',
   groupBy: 'customer',
   itemTypes: ['TOOL'],
@@ -83,16 +83,16 @@ function cleanWhere(raw: any): DashboardWhere | undefined {
 export function validateTile(raw: any): { tile: DashboardTile } | { error: string } {
   const slot = Number(raw?.slot);
   if (!Number.isInteger(slot) || slot < 1 || slot > DASHBOARD_SLOTS) {
-    return { error: `slot deve essere un intero da 1 a ${DASHBOARD_SLOTS}` };
+    return { error: `slot must be an integer from 1 to ${DASHBOARD_SLOTS}` };
   }
   const title = cleanText(raw?.title);
-  if (!title) return { error: 'title obbligatorio' };
-  if (!DASHBOARD_CHARTS.includes(raw.chart)) return { error: `chart ammessi: ${DASHBOARD_CHARTS.join(', ')}` };
+  if (!title) return { error: 'title is required' };
+  if (!DASHBOARD_CHARTS.includes(raw.chart)) return { error: `allowed chart values: ${DASHBOARD_CHARTS.join(', ')}` };
 
   const rawTypes: unknown[] = Array.isArray(raw.itemTypes) && raw.itemTypes.length > 0 ? raw.itemTypes : ITEM_TYPES;
   const itemTypes = [...new Set(rawTypes.map(t => String(t).toUpperCase()))] as ItemType[];
   if (!itemTypes.every(t => ITEM_TYPES.includes(t))) {
-    return { error: `itemTypes ammessi: ${ITEM_TYPES.join(', ')}` };
+    return { error: `allowed itemTypes values: ${ITEM_TYPES.join(', ')}` };
   }
 
   const tile: DashboardTile = { slot, title, chart: raw.chart, itemTypes };
@@ -100,13 +100,13 @@ export function validateTile(raw: any): { tile: DashboardTile } | { error: strin
   if (where) tile.where = where;
 
   if (raw.chart === 'bar') {
-    if (!DASHBOARD_GROUP_BY.includes(raw.groupBy)) return { error: `groupBy ammessi: ${DASHBOARD_GROUP_BY.join(', ')}` };
+    if (!DASHBOARD_GROUP_BY.includes(raw.groupBy)) return { error: `allowed groupBy values: ${DASHBOARD_GROUP_BY.join(', ')}` };
     tile.groupBy = raw.groupBy;
   }
   if (raw.chart === 'list') {
     const sortBy: DashboardSortBy = raw.sortBy ?? 'createdAt';
-    if (!DASHBOARD_SORT_BY.includes(sortBy)) return { error: `sortBy ammessi: ${DASHBOARD_SORT_BY.join(', ')}` };
-    if (raw.order !== undefined && raw.order !== 'asc' && raw.order !== 'desc') return { error: 'order ammessi: asc, desc' };
+    if (!DASHBOARD_SORT_BY.includes(sortBy)) return { error: `allowed sortBy values: ${DASHBOARD_SORT_BY.join(', ')}` };
+    if (raw.order !== undefined && raw.order !== 'asc' && raw.order !== 'desc') return { error: 'allowed order values: asc, desc' };
     tile.sortBy = sortBy;
     tile.order = raw.order ?? (sortBy === 'priority' || sortBy === 'title' ? 'asc' : 'desc');
     tile.limit = cleanPositiveInt(raw.limit, LIST_MAX_ROWS) ?? LIST_DEFAULT_ROWS;
@@ -117,14 +117,14 @@ export function validateTile(raw: any): { tile: DashboardTile } | { error: strin
 export function describeWhere(where?: DashboardWhere): string {
   if (!where) return '';
   const parts: string[] = [];
-  if (where.customer) parts.push(`cliente "${where.customer}"`);
+  if (where.customer) parts.push(`customer "${where.customer}"`);
   if (where.tag) parts.push(`tag "${where.tag}"`);
-  if (where.phase) parts.push(`fase "${where.phase}"`);
+  if (where.phase) parts.push(`phase "${where.phase}"`);
   if (where.owner) parts.push(`owner "${where.owner}"`);
-  if (where.priorityMax) parts.push(`priorità fino a ${where.priorityMax}`);
-  if (where.createdWithinDays) parts.push(`creati negli ultimi ${where.createdWithinDays} gg`);
+  if (where.priorityMax) parts.push(`priority up to ${where.priorityMax}`);
+  if (where.createdWithinDays) parts.push(`created in the last ${where.createdWithinDays} days`);
   if (where.generalizationRequired !== undefined) {
-    parts.push(where.generalizationRequired ? 'da generalizzare' : 'non da generalizzare');
+    parts.push(where.generalizationRequired ? 'to be generalized' : 'not to be generalized');
   }
   return parts.join(', ');
 }
@@ -133,12 +133,12 @@ export function describeTile(tile: DashboardTile): string {
   const parts = [tile.itemTypes.map(t => TYPE_LABELS[t]).join(' + ')];
   const where = describeWhere(tile.where);
   if (where) parts.push(where);
-  if (tile.chart === 'bar' && tile.groupBy) parts.push(`per ${GROUP_BY_LABELS[tile.groupBy]}`);
+  if (tile.chart === 'bar' && tile.groupBy) parts.push(`by ${GROUP_BY_LABELS[tile.groupBy]}`);
   if (tile.chart === 'list' && tile.sortBy) {
     const direction = tile.sortBy === 'priority'
-      ? (tile.order === 'desc' ? 'dalla meno alta' : 'dalla più alta')
-      : (tile.order === 'asc' ? 'crescente' : 'decrescente');
-    parts.push(`ordinati per ${SORT_BY_LABELS[tile.sortBy].toLowerCase()} (${direction})`, `primi ${tile.limit}`);
+      ? (tile.order === 'desc' ? 'lowest first' : 'highest first')
+      : (tile.order === 'asc' ? 'ascending' : 'descending');
+    parts.push(`sorted by ${SORT_BY_LABELS[tile.sortBy].toLowerCase()} (${direction})`, `top ${tile.limit}`);
   }
   return parts.join(' · ');
 }
@@ -148,7 +148,7 @@ export interface Bucket {
   count: number;
 }
 
-const NOT_AVAILABLE = 'N/D';
+const NOT_AVAILABLE = 'N/A';
 
 function startsWithText(value: string | undefined, query: string): boolean {
   return (value ?? '').trim().toLowerCase().startsWith(query.toLowerCase());

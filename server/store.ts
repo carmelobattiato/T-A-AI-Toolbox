@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { Phase, Item, Attachment, AuditLog, DashboardTile } from '../src/types/index.ts';
+import { Phase, Item, Attachment, AuditLog, DashboardTile, Practice, DEFAULT_PRACTICE_ID } from '../src/types/index.ts';
 import { DEFAULT_TILE } from '../src/utils/dashboard.ts';
 import { toSafeHref } from '../src/utils/url.ts';
+import { isIconKey } from '../src/utils/iconKeys.ts';
 
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
@@ -10,6 +11,7 @@ const LOG_FILE = path.resolve(DATA_DIR, 'log.json');
 const MAX_AUDIT_LOGS = 500;
 
 interface DatabaseSchema {
+  practices?: Practice[];
   phases: Phase[];
   items: Item[];
   attachments: Attachment[];
@@ -20,7 +22,7 @@ interface DatabaseSchema {
   dashboardDefaultsApplied?: boolean;
 }
 
-const DEFAULT_PHASES: Phase[] = [
+const DEFAULT_PHASES: Phase[] = ([
   {
     id: 'phase-0',
     title: 'Pre-Sales & Estimation',
@@ -163,24 +165,46 @@ const DEFAULT_PHASES: Phase[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
+] as Omit<Phase, 'practiceId'>[]).map(p => ({ ...p, practiceId: DEFAULT_PRACTICE_ID }));
+
+const DEFAULT_PRACTICES: Practice[] = [
+  { id: DEFAULT_PRACTICE_ID, name: 'T&A', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
 ];
+
+function randomSuffix(len = 5): string {
+  return Math.random().toString(36).substring(2, 2 + len);
+}
+
+function slugify(name: string): string {
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+}
 
 // Fields the server owns: a client can never overwrite them through create or update requests
 function withoutServerFields<T extends object>(data: T): T {
   const copy: Record<string, unknown> = { ...(data as Record<string, unknown>) };
-  for (const field of ['id', 'createdAt', 'createdBy', 'isCore', 'attachments']) delete copy[field];
+  for (const field of ['id', 'practiceId', 'createdAt', 'createdBy', 'isCore', 'attachments']) delete copy[field];
   return copy as T;
 }
 
 const ATTACHMENT_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg'];
 const MAX_ATTACHMENT_CHARS = 7_500_000; // ~5 MB of base64, the limit the UI enforces
 
+// Only known icon keys are stored; anything else means "default icon"
+function cleanIcon(value: unknown): string | undefined {
+  return isIconKey(value) ? value : undefined;
+}
+
+function resolveIcon(value: unknown, current: string | null | undefined): string | undefined {
+  if (value === null || value === '') return undefined;
+  return cleanIcon(value) ?? cleanIcon(current);
+}
+
 function cleanPriority(type: string, value: unknown): number | undefined {
   if (type === 'TOOL') return undefined;
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
 }
 
-const DEFAULT_ITEMS: Item[] = [
+const DEFAULT_ITEMS: Omit<Item, 'practiceId'>[] = [
   {
     id: 'item-tool-1',
     type: 'TOOL',
@@ -396,6 +420,15 @@ class DatabaseStore {
       }
     }
 
+    // Logs written while practices were still called pillars
+    for (const log of [...(stored ?? []), ...(legacy ?? [])] as any[]) {
+      if (log.pillarId !== undefined) {
+        log.practiceId ??= log.pillarId;
+        delete log.pillarId;
+      }
+      if (log.entityType === 'PILLAR') log.entityType = 'PRACTICE';
+    }
+
     if (stored && !legacy) return stored;
 
     // First run, or an older db.json that still embeds the logs: merge by id, newest first
@@ -431,14 +464,31 @@ class DatabaseStore {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed.phases && parsed.items) {
+          // Older databases have a single map: everything belongs to the default practice
+          // Databases saved while "practices" were still called "pillars"
+          if (parsed.pillars && !parsed.practices) parsed.practices = parsed.pillars;
+          delete parsed.pillars;
+          const renameLegacyKey = (obj: Record<string, unknown>) => {
+            if (obj.pillarId !== undefined) {
+              obj.practiceId ??= obj.pillarId;
+              delete obj.pillarId;
+            }
+          };
+          parsed.phases.forEach(renameLegacyKey);
+          parsed.items.forEach(renameLegacyKey);
+          (parsed.dashboardTiles ?? []).forEach(renameLegacyKey);
+          parsed.practices ??= DEFAULT_PRACTICES.map(p => ({ ...p }));
+          for (const phase of parsed.phases) phase.practiceId ??= DEFAULT_PRACTICE_ID;
           for (const item of parsed.items) {
+            item.practiceId ??= DEFAULT_PRACTICE_ID;
             item.tags ??= [];
             item.customers ??= [];
           }
           parsed.dashboardTiles ??= [];
+          for (const tile of parsed.dashboardTiles) tile.practiceId ??= DEFAULT_PRACTICE_ID;
           if (!parsed.dashboardDefaultsApplied) {
-            if (!parsed.dashboardTiles.some((t: DashboardTile) => t.slot === DEFAULT_TILE.slot)) {
-              parsed.dashboardTiles.push({ ...DEFAULT_TILE });
+            if (!parsed.dashboardTiles.some((t: DashboardTile) => t.practiceId === DEFAULT_PRACTICE_ID && t.slot === DEFAULT_TILE.slot)) {
+              parsed.dashboardTiles.push({ ...DEFAULT_TILE, practiceId: DEFAULT_PRACTICE_ID });
             }
             parsed.dashboardDefaultsApplied = true;
           }
@@ -456,10 +506,11 @@ class DatabaseStore {
     }
 
     const initialData: DatabaseSchema = {
+      practices: DEFAULT_PRACTICES.map(p => ({ ...p })),
       phases: DEFAULT_PHASES,
-      items: DEFAULT_ITEMS.map(item => ({ ...item, tags: item.tags ?? [], customers: item.customers ?? [] })),
+      items: DEFAULT_ITEMS.map(item => ({ ...item, practiceId: DEFAULT_PRACTICE_ID, tags: item.tags ?? [], customers: item.customers ?? [] })),
       attachments: [],
-      dashboardTiles: [{ ...DEFAULT_TILE }],
+      dashboardTiles: [{ ...DEFAULT_TILE, practiceId: DEFAULT_PRACTICE_ID }],
       dashboardDefaultsApplied: true,
     };
     this.saveData(initialData);
@@ -484,9 +535,78 @@ class DatabaseStore {
     this.saveData(this.data);
   }
 
+  // --- Practices ---
+  getPractices(): Practice[] {
+    return [...(this.data.practices ??= DEFAULT_PRACTICES.map(p => ({ ...p })))];
+  }
+
+  getPractice(id: string): Practice | undefined {
+    return this.getPractices().find(p => p.id === id);
+  }
+
+  createPractice(rawName: unknown, user = 'local.user'): Practice {
+    const name = typeof rawName === 'string' ? rawName.trim().slice(0, 60) : '';
+    if (!name) throw new Error('Practice name is required');
+    if (this.getPractices().some(p => p.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error('A practice with this name already exists');
+    }
+    let id = slugify(name) || `practice-${randomSuffix()}`;
+    while (this.getPractice(id)) id = `${slugify(name) || 'practice'}-${randomSuffix(3)}`;
+
+    const now = new Date().toISOString();
+    const practice: Practice = { id, name, createdAt: now, createdBy: user };
+    this.data.practices!.push(practice);
+    // Every new practice starts from one editable phase
+    this.data.phases.push({
+      id: `phase-${Date.now()}-${randomSuffix()}`,
+      practiceId: id,
+      title: 'Base phase',
+      description: 'Starting phase: rename it or add new phases to build your own map.',
+      activities: [],
+      position: 0,
+      isCore: false,
+      createdBy: user,
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.addAuditLog(user, 'CREATE', 'PRACTICE', id, { name }, id);
+    this.persist();
+    return practice;
+  }
+
+  renamePractice(id: string, rawName: unknown, user = 'local.user'): Practice | null {
+    const practice = this.data.practices?.find(p => p.id === id);
+    if (!practice) return null;
+    const name = typeof rawName === 'string' ? rawName.trim().slice(0, 60) : '';
+    if (!name) throw new Error('Practice name is required');
+    if (this.getPractices().some(p => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error('A practice with this name already exists');
+    }
+    practice.name = name;
+    this.addAuditLog(user, 'UPDATE', 'PRACTICE', id, { name }, id);
+    this.persist();
+    return practice;
+  }
+
+  // Removes the practice and everything on its map
+  deletePractice(id: string, user = 'local.user'): boolean {
+    const practice = this.getPractice(id);
+    if (!practice) return false;
+    if (id === DEFAULT_PRACTICE_ID) throw new Error('The default practice cannot be deleted');
+    const itemIds = new Set(this.data.items.filter(i => i.practiceId === id).map(i => i.id));
+    this.data.phases = this.data.phases.filter(p => p.practiceId !== id);
+    this.data.items = this.data.items.filter(i => i.practiceId !== id);
+    this.data.attachments = this.data.attachments.filter(a => !itemIds.has(a.itemId));
+    this.data.dashboardTiles = (this.data.dashboardTiles ?? []).filter(t => t.practiceId !== id);
+    this.data.practices = this.getPractices().filter(p => p.id !== id);
+    this.addAuditLog(user, 'DELETE', 'PRACTICE', id, { name: practice.name, items: itemIds.size }, id);
+    this.persist();
+    return true;
+  }
+
   // --- Phases ---
-  getPhases(): Phase[] {
-    return [...this.data.phases].sort((a, b) => a.position - b.position);
+  getPhases(practiceId: string): Phase[] {
+    return this.data.phases.filter(p => p.practiceId === practiceId).sort((a, b) => a.position - b.position);
   }
 
   getPhase(id: string): Phase | undefined {
@@ -494,7 +614,9 @@ class DatabaseStore {
   }
 
   createPhase(phaseData: Partial<Phase> & { position?: number; targetIndex?: number }, user = 'local.user'): Phase {
-    const phases = this.getPhases();
+    const practiceId = phaseData.practiceId;
+    if (!practiceId || !this.getPractice(practiceId)) throw new Error('Invalid practice');
+    const phases = this.getPhases(practiceId);
     let newPos = phaseData.position ?? phases.length;
 
     // Se viene fornito targetIndex o inserimento tra fasi
@@ -502,8 +624,8 @@ class DatabaseStore {
       newPos = phaseData.targetIndex;
     }
 
-    // Sposta le fasi successive
-    for (const p of this.data.phases) {
+    // Sposta le fasi successive (solo dello stessa practice)
+    for (const p of phases) {
       if (p.position >= newPos) {
         p.position += 1;
         p.updatedAt = new Date().toISOString();
@@ -511,8 +633,10 @@ class DatabaseStore {
     }
 
     const newPhase: Phase = {
-      id: `phase-${Date.now()}`,
-      title: phaseData.title || 'Nuova Fase',
+      id: `phase-${Date.now()}-${randomSuffix(4)}`,
+      practiceId,
+      icon: cleanIcon(phaseData.icon),
+      title: phaseData.title || 'New Phase',
       description: phaseData.description || '',
       activities: phaseData.activities || [],
       position: newPos,
@@ -523,7 +647,7 @@ class DatabaseStore {
     };
 
     this.data.phases.push(newPhase);
-    this.addAuditLog(user, 'CREATE', 'PHASE', newPhase.id, newPhase);
+    this.addAuditLog(user, 'CREATE', 'PHASE', newPhase.id, newPhase, practiceId);
     this.persist();
     return newPhase;
   }
@@ -539,12 +663,14 @@ class DatabaseStore {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
+    // null clears the icon (back to default); an unknown key is ignored and keeps the current one
+    if ('icon' in updates) updated.icon = resolveIcon(updates.icon, current.icon);
 
     // Gestione eventuale cambio posizione
     if (typeof updates.position === 'number' && updates.position !== current.position) {
       const oldPos = current.position;
       const targetPos = updates.position;
-      for (const p of this.data.phases) {
+      for (const p of this.getPhases(current.practiceId)) {
         if (p.id === id) continue;
         if (targetPos > oldPos) {
           if (p.position > oldPos && p.position <= targetPos) {
@@ -559,7 +685,7 @@ class DatabaseStore {
     }
 
     this.data.phases[index] = updated;
-    this.addAuditLog(user, 'UPDATE', 'PHASE', id, updates);
+    this.addAuditLog(user, 'UPDATE', 'PHASE', id, updates, current.practiceId);
     this.persist();
     return updated;
   }
@@ -575,20 +701,23 @@ class DatabaseStore {
       item.phaseIds = item.phaseIds.filter(pid => pid !== id);
     }
 
-    // Compatta le posizioni
-    const sorted = this.getPhases();
-    sorted.forEach((p, idx) => {
+    // Compatta le posizioni (solo della practice)
+    this.getPhases(target.practiceId).forEach((p, idx) => {
       p.position = idx;
     });
 
-    this.addAuditLog(user, 'DELETE', 'PHASE', id, { title: target.title });
+    this.addAuditLog(user, 'DELETE', 'PHASE', id, { title: target.title }, target.practiceId);
     this.persist();
     return true;
   }
 
   // --- Items ---
-  getItems(filter?: { type?: string; phaseId?: string; search?: string }): Item[] {
+  getItems(filter?: { practiceId?: string; type?: string; phaseId?: string; search?: string }): Item[] {
     let items = [...this.data.items];
+
+    if (filter?.practiceId) {
+      items = items.filter(i => i.practiceId === filter.practiceId);
+    }
 
     if (filter?.type) {
       items = items.filter(i => i.type === filter.type);
@@ -628,14 +757,19 @@ class DatabaseStore {
   }
 
   createItem(itemData: Partial<Item>, user = 'local.user'): Item {
+    const practiceId = itemData.practiceId;
+    if (!practiceId || !this.getPractice(practiceId)) throw new Error('Invalid practice');
+    // An item can only be linked to phases of its own practice
+    const practicePhaseIds = new Set(this.getPhases(practiceId).map(p => p.id));
     const newItem: Item = {
       id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      practiceId,
       type: itemData.type || 'TOOL',
-      title: itemData.title || 'Nuovo Elemento',
+      title: itemData.title || 'New Item',
       summary: itemData.summary || '',
       description: itemData.description || '',
       notes: itemData.notes || '',
-      phaseIds: itemData.phaseIds || [],
+      phaseIds: (itemData.phaseIds || []).filter(pid => practicePhaseIds.has(pid)),
       githubUrl: toSafeHref(itemData.githubUrl),
       catalogUrl: toSafeHref(itemData.catalogUrl),
       demoUrl: toSafeHref(itemData.demoUrl),
@@ -650,6 +784,7 @@ class DatabaseStore {
       tags: itemData.tags ?? [],
       customers: itemData.customers ?? [],
       priority: cleanPriority(itemData.type || 'TOOL', itemData.priority),
+      icon: cleanIcon(itemData.icon),
       positionX: itemData.positionX,
       positionY: itemData.positionY,
       createdBy: user,
@@ -658,7 +793,7 @@ class DatabaseStore {
     };
 
     this.data.items.push(newItem);
-    this.addAuditLog(user, 'CREATE', 'ITEM', newItem.id, newItem);
+    this.addAuditLog(user, 'CREATE', 'ITEM', newItem.id, newItem, practiceId);
     this.persist();
     return newItem;
   }
@@ -672,11 +807,17 @@ class DatabaseStore {
     if (idx === -1) return null;
 
     const current = this.data.items[idx];
+    if (Array.isArray(updates.phaseIds)) {
+      const practicePhaseIds = new Set(this.getPhases(current.practiceId).map(p => p.id));
+      updates.phaseIds = updates.phaseIds.filter(pid => practicePhaseIds.has(pid));
+    }
     const updated = {
       ...current,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
+    // null clears the icon (back to default); an unknown key is ignored and keeps the current one
+    if ('icon' in updates) updated.icon = resolveIcon(updates.icon, current.icon);
     if ('priority' in updates) {
       const priority = updates.priority === null ? undefined : cleanPriority(updated.type, updates.priority) ?? current.priority;
       if (priority == null) delete updated.priority;
@@ -684,7 +825,7 @@ class DatabaseStore {
     }
 
     this.data.items[idx] = updated;
-    this.addAuditLog(user, 'UPDATE', 'ITEM', id, updates);
+    this.addAuditLog(user, 'UPDATE', 'ITEM', id, updates, current.practiceId);
     this.persist();
     return {
       ...updated,
@@ -692,24 +833,25 @@ class DatabaseStore {
     };
   }
 
-  // --- Dashboard tiles (one custom tile per slot) ---
-  getDashboardTiles(): DashboardTile[] {
-    return [...(this.data.dashboardTiles ?? [])].sort((a, b) => a.slot - b.slot);
+  // --- Dashboard tiles (one custom tile per slot, per practice) ---
+  getDashboardTiles(practiceId: string): DashboardTile[] {
+    return (this.data.dashboardTiles ?? []).filter(t => t.practiceId === practiceId).sort((a, b) => a.slot - b.slot);
   }
 
-  upsertDashboardTile(tile: DashboardTile): DashboardTile {
+  upsertDashboardTile(practiceId: string, tile: DashboardTile): DashboardTile {
     const tiles = (this.data.dashboardTiles ??= []);
-    const idx = tiles.findIndex(t => t.slot === tile.slot);
-    if (idx === -1) tiles.push(tile);
-    else tiles[idx] = tile;
+    const stored = { ...tile, practiceId };
+    const idx = tiles.findIndex(t => t.practiceId === practiceId && t.slot === tile.slot);
+    if (idx === -1) tiles.push(stored);
+    else tiles[idx] = stored;
     this.persist();
-    return tile;
+    return stored;
   }
 
-  deleteDashboardTile(slot: number): boolean {
+  deleteDashboardTile(practiceId: string, slot: number): boolean {
     const tiles = this.data.dashboardTiles ?? [];
-    if (!tiles.some(t => t.slot === slot)) return false;
-    this.data.dashboardTiles = tiles.filter(t => t.slot !== slot);
+    if (!tiles.some(t => t.practiceId === practiceId && t.slot === slot)) return false;
+    this.data.dashboardTiles = tiles.filter(t => !(t.practiceId === practiceId && t.slot === slot));
     this.persist();
     return true;
   }
@@ -721,7 +863,7 @@ class DatabaseStore {
     this.data.items = this.data.items.filter(i => i.id !== id);
     this.data.attachments = this.data.attachments.filter(a => a.itemId !== id);
 
-    this.addAuditLog(user, 'DELETE', 'ITEM', id, { title: target.title, type: target.type });
+    this.addAuditLog(user, 'DELETE', 'ITEM', id, { title: target.title, type: target.type }, target.practiceId);
     this.persist();
     return true;
   }
@@ -730,20 +872,20 @@ class DatabaseStore {
   addAttachment(itemId: string, attachmentData: { fileName: string; mimeType: string; data: string }): Attachment {
     const { fileName, mimeType, data } = attachmentData;
     if (typeof fileName !== 'string' || typeof mimeType !== 'string' || typeof data !== 'string') {
-      throw new Error('Allegato non valido');
+      throw new Error('Invalid attachment');
     }
     if (!ATTACHMENT_MIME_TYPES.includes(mimeType) || !/^data:image\/(png|jpe?g);base64,/i.test(data)) {
-      throw new Error('Sono consentiti solo file PNG, JPG o JPEG');
+      throw new Error('Only PNG, JPG or JPEG files are allowed');
     }
     if (data.length > MAX_ATTACHMENT_CHARS) {
-      throw new Error('Il file supera il limite di 5 MB');
+      throw new Error('The file exceeds the 5 MB limit');
     }
     if (!this.data.items.some(i => i.id === itemId)) {
-      throw new Error('Elemento non trovato');
+      throw new Error('Item not found');
     }
     const existing = this.data.attachments.filter(a => a.itemId === itemId);
     if (existing.length >= 3) {
-      throw new Error('Massimo 3 allegati consentiti per elemento');
+      throw new Error('A maximum of 3 attachments is allowed per item');
     }
 
     const newAttachment: Attachment = {
@@ -771,9 +913,10 @@ class DatabaseStore {
   }
 
   // --- Audit Logs ---
-  addAuditLog(user: string, action: 'CREATE' | 'UPDATE' | 'DELETE', entityType: 'PHASE' | 'ITEM' | 'ATTACHMENT', entityId: string, payload?: any) {
+  addAuditLog(user: string, action: 'CREATE' | 'UPDATE' | 'DELETE', entityType: AuditLog['entityType'], entityId: string, payload?: any, practiceId?: string) {
     const log: AuditLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      practiceId,
       user,
       action,
       entityType,
@@ -788,8 +931,24 @@ class DatabaseStore {
     this.writeAuditLogs(this.auditLogs);
   }
 
-  getAuditLogs(): AuditLog[] {
-    return this.auditLogs;
+  // Without a practice: every log. Logs written before practices existed belong to the default one.
+  getAuditLogs(practiceId?: string): AuditLog[] {
+    if (!practiceId) return this.auditLogs;
+    return this.auditLogs.filter(l => l.entityType !== 'USER' && (l.practiceId ?? DEFAULT_PRACTICE_ID) === practiceId);
+  }
+
+  // Practice that owns an item / phase, used to authorise writes
+  getItemPractice(id: string): string | undefined {
+    return this.data.items.find(i => i.id === id)?.practiceId;
+  }
+
+  getPhasePractice(id: string): string | undefined {
+    return this.data.phases.find(p => p.id === id)?.practiceId;
+  }
+
+  getAttachmentPractice(id: string): string | undefined {
+    const att = this.data.attachments.find(a => a.id === id);
+    return att ? this.getItemPractice(att.itemId) : undefined;
   }
 }
 

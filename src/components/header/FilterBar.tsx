@@ -39,10 +39,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
   const isActive = filters.maxAgeDays !== null || filters.tagQuery.trim() !== '';
 
   return (
-    <div className="shrink-0 z-30 min-h-12 py-1.5 bg-white/95 border-b border-slate-200 px-6 flex flex-wrap items-center gap-x-6 gap-y-2 select-none">
+    <div data-tour="filters" className="shrink-0 z-30 min-h-12 py-1.5 bg-white/95 border-b border-slate-200 px-6 flex flex-wrap items-center gap-x-6 gap-y-2 select-none">
       <div className="flex items-center gap-2.5">
         <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
-        <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">Creati</span>
+        <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">Created</span>
         <input
           type="range"
           min={0}
@@ -54,10 +54,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
             onFilterChange({ ...filters, maxAgeDays: value === 0 ? null : value });
           }}
           className="w-44 accent-purple-600 cursor-pointer"
-          aria-label="Filtra per giorni dalla creazione"
+          aria-label="Filter by days since creation"
         />
-        <span className="text-xs font-semibold text-purple-700 w-20 whitespace-nowrap">
-          {filters.maxAgeDays === null ? 'Tutto' : `Ultimi ${filters.maxAgeDays} gg`}
+        <span className="text-xs font-semibold text-purple-700 w-24 whitespace-nowrap">
+          {filters.maxAgeDays === null ? 'All' : `Last ${filters.maxAgeDays} ${filters.maxAgeDays === 1 ? 'day' : 'days'}`}
         </span>
       </div>
 
@@ -69,7 +69,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
           type="text"
           value={filters.tagQuery}
           onChange={e => onFilterChange({ ...filters, tagQuery: e.target.value })}
-          placeholder="Filtra per tag o cliente (es. Poste; Sog)"
+          placeholder="Filter by tag or customer (e.g. Poste; Sog)"
           className="w-full pl-9 pr-8 py-1.5 text-xs rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600 text-slate-800 transition-colors"
         />
         {filters.tagQuery && (
@@ -77,7 +77,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
             type="button"
             onClick={() => onFilterChange({ ...filters, tagQuery: '' })}
             className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-700 cursor-pointer"
-            title="Cancella filtro tag e clienti"
+            title="Clear tag and customer filter"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -100,7 +100,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
           trackOnClass="bg-purple-600"
         />
         <TypeToggle
-          label="Esigenze"
+          label="Needs"
           checked={filters.showNeeds}
           onToggle={() => onFilterChange({ ...filters, showNeeds: !filters.showNeeds })}
           onClasses="bg-emerald-50 border-emerald-200 text-emerald-700 shadow-2xs"
@@ -114,7 +114,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
             onChange={e => onFilterChange({ ...filters, onlyGeneralize: e.target.checked })}
             className="w-3.5 h-3.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
           />
-          <span className="font-medium text-xs">Da generalizzare</span>
+          <span className="font-medium text-xs">To generalize</span>
         </label>
 
         {isActive && (
@@ -124,7 +124,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
             className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Azzera filtri</span>
+            <span>Reset filters</span>
           </button>
         )}
       </div>

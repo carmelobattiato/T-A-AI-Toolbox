@@ -61,7 +61,7 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
       >
         {/* Tool Icon */}
         <div className="mb-1 transition-transform duration-200 group-hover:scale-110">
-          {getItemIcon('TOOL', item.title)}
+          {getItemIcon('TOOL', item.title, item.icon)}
         </div>
 
         {/* Title */}
@@ -69,24 +69,24 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
           {item.title}
         </div>
 
-        {/* Da generalizzare Badge */}
+        {/* To generalize Badge */}
         {item.generalizationRequired && (
           <span className="mt-1 text-[8.5px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap shadow-2xs">
-            Da generalizzare
+            To generalize
           </span>
         )}
 
         {/* Owner Avatar / Badge */}
         <div className="absolute bottom-1 right-2 flex items-center">
           <div
-            title={`Owner: ${item.owner || 'Team T&A'}`}
+            title={`Owner: ${item.owner || 'Not specified'}`}
             className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
           >
             {ownerInitials}
           </div>
           {item.phaseIds.length > 1 && (
             <span
-              title={`Copre ${item.phaseIds.length} fasi`}
+              title={`Covers ${item.phaseIds.length} phases`}
               className="ml-0.5 text-[8px] font-bold text-blue-600 bg-blue-50 rounded-full px-1 border border-blue-200"
             >
               +{item.phaseIds.length}
@@ -109,7 +109,7 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
           <div className="font-semibold text-blue-300">{item.title}</div>
           <div className="text-[10px] text-slate-400">Tool</div>
           <div className="text-[10px] text-slate-300 mt-0.5">
-            Copre: {coveredPhases.map(p => p.title).join(', ') || 'Nessuna fase'}
+            Covers: {coveredPhases.map(p => p.title).join(', ') || 'No phase'}
           </div>
           {item.owner && (
             <div className="text-[10px] text-slate-400">Owner: {item.owner}</div>

@@ -1,7 +1,32 @@
 export type ItemType = 'TOOL' | 'IDEA' | 'NEED';
 
+export const DEFAULT_PRACTICE_ID = 'ta';
+
+export interface Practice {
+  id: string;
+  name: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export type UserRole = 'admin' | 'editor';
+
+// Public view of a user (never includes password data)
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  practices: string[];
+  active: boolean;
+  mustChangePassword: boolean;
+}
+
 export interface Phase {
   id: string;
+  practiceId: string;
+  // Icon key chosen by the user (see iconKeys.ts); empty = the default icon for the position
+  icon?: string | null;
   title: string;
   description: string;
   activities: string[];
@@ -23,6 +48,7 @@ export interface Attachment {
 
 export interface Item {
   id: string;
+  practiceId: string;
   type: ItemType;
   title: string;
   summary?: string;
@@ -49,6 +75,8 @@ export interface Item {
   tags?: string[];
   customers?: string[];
 
+  // Icon key chosen by the user (see iconKeys.ts); empty = the default icon for the type
+  icon?: string | null;
   // Need and Idea only: 1 = highest priority
   priority?: number | null;
 
@@ -74,9 +102,10 @@ export interface ItemPhase {
 
 export interface AuditLog {
   id: string;
+  practiceId?: string;
   user: string;
   action: 'CREATE' | 'UPDATE' | 'DELETE';
-  entityType: 'PHASE' | 'ITEM' | 'ATTACHMENT';
+  entityType: 'PHASE' | 'ITEM' | 'ATTACHMENT' | 'PRACTICE' | 'USER';
   entityId: string;
   payload?: any;
   createdAt: string;
@@ -99,6 +128,7 @@ export interface DashboardWhere {
 
 // A tile is a query (itemTypes, where, plus groupBy or sortBy/order/limit) and how to show it (chart)
 export interface DashboardTile {
+  practiceId?: string;
   slot: number;
   title: string;
   chart: 'bar' | 'number' | 'list';

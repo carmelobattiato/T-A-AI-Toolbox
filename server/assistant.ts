@@ -1,7 +1,8 @@
 import { Type, FunctionDeclaration } from '@google/genai';
 import { db } from './store.ts';
 import { settingsStore, createGeminiClient, checkEndpoint } from './settingsStore.ts';
-import { PendingAction, AISettings } from '../src/types/index.ts';
+import { PendingAction, AISettings, AuthUser } from '../src/types/index.ts';
+import { anonymousNeedAllowed, canEdit } from './auth.ts';
 import {
   DASHBOARD_SLOTS,
   DASHBOARD_CHARTS,
@@ -13,25 +14,54 @@ import {
   validateTile,
 } from '../src/utils/dashboard.ts';
 
-// Stored pending actions per user awaiting confirmation
+// Who is chatting and on which practice's map. Anonymous visitors (user = null) can only read.
+export interface ChatContext {
+  user: AuthUser | null;
+  practiceId: string;
+  // Client address, used to rate limit needs submitted without login
+  ip?: string;
+}
+
+// Stored pending actions per user awaiting confirmation (keyed by username)
 const pendingActionsByUser = new Map<string, PendingAction>();
+
+function practiceName(practiceId: string): string {
+  return db.getPractice(practiceId)?.name ?? practiceId;
+}
+
+// Message to show when the user may not write on the practice, or null when allowed
+function writeDenied(ctx: ChatContext, practiceId: string): string | null {
+  if (!ctx.user) return 'To change data you need to sign in: use the "Sign in" button at the top right. Without signing in I can only browse the map.';
+  if (ctx.user.mustChangePassword) return 'Change your temporary password before editing data.';
+  if (!canEdit(ctx.user, practiceId)) return `You do not have permission to edit the practice "${practiceName(practiceId)}".`;
+  return null;
+}
+
+// The phase the user asked for, else the preferred one when it exists in the practice, else the first
+function defaultPhaseId(practiceId: string, preferredId: string): string {
+  const phases = db.getPhases(practiceId);
+  return phases.find(p => p.id === preferredId)?.id ?? phases[0]?.id ?? '';
+}
+
+// create_need is open to everybody (like the "+" on the map); everything else needs edit rights
+const WRITE_TOOLS = new Set(['create_tool', 'create_idea', 'create_phase', 'create_dashboard_tile', 'update_item', 'delete_item']);
 
 // Function Declarations per Gemini Function Calling
 const searchItemsDeclaration: FunctionDeclaration = {
   name: 'search_items',
-  description: 'Cerca tool, idee o esigenze nella knowledge base di T&A Toolbox.',
+  description: 'Search tools, WiP items or needs in the current practice of ADM Project Blueprint.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      query: { type: Type.STRING, description: 'Termine di ricerca (es. "terraform", "assessment", "diagrammi")' },
-      type: { type: Type.STRING, description: 'Filtro opzionale per tipo: TOOL, IDEA, o NEED' }
+      query: { type: Type.STRING, description: 'Search term (e.g. "terraform", "assessment", "diagrams")' },
+      type: { type: Type.STRING, description: 'Optional type filter: TOOL, IDEA (WiP), or NEED' }
     }
   }
 };
 
 const listPhasesDeclaration: FunctionDeclaration = {
   name: 'list_phases',
-  description: 'Elenca tutte le fasi del processo T&A in ordine sequenziale con id, titolo e statistiche.',
+  description: 'List all process phases of the current practice in sequential order with id, title and statistics.',
   parameters: {
     type: Type.OBJECT,
     properties: {}
@@ -40,11 +70,11 @@ const listPhasesDeclaration: FunctionDeclaration = {
 
 const getPhaseDeclaration: FunctionDeclaration = {
   name: 'get_phase',
-  description: 'Ottiene i dettagli di una fase specifica (titolo, descrizione, attività, tool ed esigenze collegati).',
+  description: 'Get the details of a specific phase (title, description, activities, linked tools and needs).',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      phaseId: { type: Type.STRING, description: 'ID della fase (es. "phase-1") o titolo/numero' }
+      phaseId: { type: Type.STRING, description: 'Phase ID (e.g. "phase-1") or title/number' }
     },
     required: ['phaseId']
   }
@@ -52,23 +82,23 @@ const getPhaseDeclaration: FunctionDeclaration = {
 
 const createToolDeclaration: FunctionDeclaration = {
   name: 'create_tool',
-  description: 'Crea un nuovo Tool e lo associa a una o più fasi del processo T&A.',
+  description: 'Create a new Tool and link it to one or more phases of the current practice process.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      title: { type: Type.STRING, description: 'Nome del Tool' },
-      description: { type: Type.STRING, description: 'Descrizione completa del tool' },
-      summary: { type: Type.STRING, description: 'Sintesi breve (1 riga)' },
+      title: { type: Type.STRING, description: 'Tool name' },
+      description: { type: Type.STRING, description: 'Full description of the tool' },
+      summary: { type: Type.STRING, description: 'Short summary (1 line)' },
       phaseIds: {
         type: Type.ARRAY,
         items: { type: Type.STRING },
-        description: 'Array di ID delle fasi associate (es. ["phase-1", "phase-2"])'
+        description: 'Array of linked phase IDs (e.g. ["phase-1", "phase-2"])'
       },
-      owner: { type: Type.STRING, description: 'Owner o POC del tool' },
-      generalizationRequired: { type: Type.BOOLEAN, description: 'Se il tool richiede generalizzazione (default false)' },
+      owner: { type: Type.STRING, description: 'Owner or POC of the tool' },
+      generalizationRequired: { type: Type.BOOLEAN, description: 'Whether the tool needs to be generalized (default false)' },
       githubUrl: { type: Type.STRING, description: 'URL GitHub' },
-      catalogUrl: { type: Type.STRING, description: 'URL Catalog aziendale' },
-      demoUrl: { type: Type.STRING, description: 'URL demo' }
+      catalogUrl: { type: Type.STRING, description: 'Company catalog URL' },
+      demoUrl: { type: Type.STRING, description: 'Demo URL' }
     },
     required: ['title', 'phaseIds']
   }
@@ -76,20 +106,20 @@ const createToolDeclaration: FunctionDeclaration = {
 
 const createIdeaDeclaration: FunctionDeclaration = {
   name: 'create_idea',
-  description: 'Crea una nuova Idea da sviluppare e la associa a una o più fasi.',
+  description: 'Create a new WiP (work in progress idea) to develop and link it to one or more phases.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      title: { type: Type.STRING, description: 'Titolo dell\'idea' },
-      problem: { type: Type.STRING, description: 'Problema che intende risolvere' },
-      requirements: { type: Type.STRING, description: 'Requisiti tecnici o funzionali' },
-      expectedBenefit: { type: Type.STRING, description: 'Beneficio atteso' },
+      title: { type: Type.STRING, description: 'WiP title' },
+      problem: { type: Type.STRING, description: 'Problem it aims to solve' },
+      requirements: { type: Type.STRING, description: 'Technical or functional requirements' },
+      expectedBenefit: { type: Type.STRING, description: 'Expected benefit' },
       phaseIds: {
         type: Type.ARRAY,
         items: { type: Type.STRING },
-        description: 'Array di ID delle fasi'
+        description: 'Array of phase IDs'
       },
-      owner: { type: Type.STRING, description: 'Autore / Proponente dell\'idea' }
+      owner: { type: Type.STRING, description: 'Author / proposer of the WiP' }
     },
     required: ['title', 'phaseIds']
   }
@@ -97,21 +127,21 @@ const createIdeaDeclaration: FunctionDeclaration = {
 
 const createNeedDeclaration: FunctionDeclaration = {
   name: 'create_need',
-  description: 'Crea una nuova Esigenza operativa e la associa a una o più fasi.',
+  description: 'Create a new operational Need and link it to one or more phases.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      title: { type: Type.STRING, description: 'Titolo dell\'esigenza' },
-      description: { type: Type.STRING, description: 'Descrizione dettagliata del bisogno' },
-      currentProcess: { type: Type.STRING, description: 'Come viene gestita l\'attività oggi' },
-      desiredTool: { type: Type.STRING, description: 'Tool o agente desiderato' },
-      desiredOutcome: { type: Type.STRING, description: 'Risultato desiderato' },
+      title: { type: Type.STRING, description: 'Need title' },
+      description: { type: Type.STRING, description: 'Detailed description of the need' },
+      currentProcess: { type: Type.STRING, description: 'How the activity is handled today' },
+      desiredTool: { type: Type.STRING, description: 'Desired tool or agent' },
+      desiredOutcome: { type: Type.STRING, description: 'Desired outcome' },
       phaseIds: {
         type: Type.ARRAY,
         items: { type: Type.STRING },
-        description: 'Array di ID delle fasi'
+        description: 'Array of phase IDs'
       },
-      owner: { type: Type.STRING, description: 'Owner / Referente dell\'esigenza' }
+      owner: { type: Type.STRING, description: 'Owner / contact person of the need' }
     },
     required: ['title', 'phaseIds']
   }
@@ -119,17 +149,17 @@ const createNeedDeclaration: FunctionDeclaration = {
 
 const createPhaseDeclaration: FunctionDeclaration = {
   name: 'create_phase',
-  description: 'Crea una nuova fase nel processo T&A e la inserisce nella sequenza.',
+  description: 'Create a new phase in the current practice process and insert it into the sequence.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      title: { type: Type.STRING, description: 'Nome della nuova fase' },
-      description: { type: Type.STRING, description: 'Descrizione dello scopo della fase' },
-      targetIndex: { type: Type.NUMBER, description: 'Indice/posizione in cui inserire la fase' },
+      title: { type: Type.STRING, description: 'Name of the new phase' },
+      description: { type: Type.STRING, description: 'Description of the purpose of the phase' },
+      targetIndex: { type: Type.NUMBER, description: 'Index/position at which to insert the phase' },
       activities: {
         type: Type.ARRAY,
         items: { type: Type.STRING },
-        description: 'Lista di attività principali'
+        description: 'List of main activities'
       }
     },
     required: ['title']
@@ -138,21 +168,21 @@ const createPhaseDeclaration: FunctionDeclaration = {
 
 const updateItemDeclaration: FunctionDeclaration = {
   name: 'update_item',
-  description: 'Modifica o rinomina un Tool, un\'Idea o un\'Esigenza esistente. Richiede ID o titolo dell\'elemento e conferma preventiva.',
+  description: 'Edit or rename an existing Tool, WiP or Need. Requires the item ID or title and prior confirmation.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      itemId: { type: Type.STRING, description: 'ID o titolo dell\'elemento da modificare' },
-      title: { type: Type.STRING, description: 'Nuovo titolo' },
-      summary: { type: Type.STRING, description: 'Nuova sintesi breve' },
-      description: { type: Type.STRING, description: 'Nuova descrizione completa' },
-      generalizationRequired: { type: Type.BOOLEAN, description: 'Flag Da generalizzare' },
+      itemId: { type: Type.STRING, description: 'ID or title of the item to edit' },
+      title: { type: Type.STRING, description: 'New title' },
+      summary: { type: Type.STRING, description: 'New short summary' },
+      description: { type: Type.STRING, description: 'New full description' },
+      generalizationRequired: { type: Type.BOOLEAN, description: '"To generalize" flag' },
       phaseIds: {
         type: Type.ARRAY,
         items: { type: Type.STRING },
-        description: 'Nuove fasi coperte'
+        description: 'New phases covered'
       },
-      confirmed: { type: Type.BOOLEAN, description: 'Se la modifica è già stata confermata esplicitamente dall\'utente' }
+      confirmed: { type: Type.BOOLEAN, description: 'Whether the user has already explicitly confirmed the change' }
     },
     required: ['itemId']
   }
@@ -160,12 +190,12 @@ const updateItemDeclaration: FunctionDeclaration = {
 
 const deleteItemDeclaration: FunctionDeclaration = {
   name: 'delete_item',
-  description: 'Elimina un Tool, Idea o Esigenza dal grafo e dal database. Richiede conferma preventiva.',
+  description: 'Delete a Tool, WiP or Need from the graph and the database. Requires prior confirmation.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      itemId: { type: Type.STRING, description: 'ID o titolo dell\'elemento da eliminare' },
-      confirmed: { type: Type.BOOLEAN, description: 'Se l\'eliminazione è già stata confermata dall\'utente' }
+      itemId: { type: Type.STRING, description: 'ID or title of the item to delete' },
+      confirmed: { type: Type.BOOLEAN, description: 'Whether the user has already confirmed the deletion' }
     },
     required: ['itemId']
   }
@@ -173,51 +203,51 @@ const deleteItemDeclaration: FunctionDeclaration = {
 
 const createDashboardTileDeclaration: FunctionDeclaration = {
   name: 'create_dashboard_tile',
-  description: `Configura un tile della dashboard (griglia di ${DASHBOARD_SLOTS} tile numerati da 1) definendo una query sui dati della mappa e come visualizzarla. Se lo slot è già occupato lo sostituisce. Chiamala direttamente con la configurazione migliore per la richiesta: il sistema mostra all'utente una card di anteprima da confermare, quindi non chiedere conferma a parole. Esempi: "le 3 esigenze con priorità più alta" = chart "list", itemTypes ["NEED"], sortBy "priority", order "asc", limit 3; "tool per cliente" = chart "bar", groupBy "customer", itemTypes ["TOOL"]; "quanti WiP creati negli ultimi 7 giorni" = chart "number", itemTypes ["IDEA"], where.createdWithinDays 7.`,
+  description: `Configure a dashboard tile (grid of ${DASHBOARD_SLOTS} tiles numbered from 1) by defining a query on the map data and how to display it. If the slot is already taken it is replaced. Call it directly with the best configuration for the request: the system shows the user a preview card to confirm, so do not ask for confirmation in words. Examples: "the 3 needs with the highest priority" = chart "list", itemTypes ["NEED"], sortBy "priority", order "asc", limit 3; "tools per customer" = chart "bar", groupBy "customer", itemTypes ["TOOL"]; "how many WiP created in the last 7 days" = chart "number", itemTypes ["IDEA"], where.createdWithinDays 7.`,
   parameters: {
     type: Type.OBJECT,
     properties: {
-      slot: { type: Type.NUMBER, description: `Numero del tile, da 1 a ${DASHBOARD_SLOTS}` },
-      title: { type: Type.STRING, description: 'Titolo breve del tile' },
+      slot: { type: Type.NUMBER, description: `Tile number, from 1 to ${DASHBOARD_SLOTS}` },
+      title: { type: Type.STRING, description: 'Short tile title' },
       chart: {
         type: Type.STRING,
         enum: DASHBOARD_CHARTS,
-        description: '"bar" = barre verticali, una per valore di groupBy (y = numero di elementi); "number" = un solo numero con il totale degli elementi; "list" = elenco ordinato dei singoli elementi (titolo, tipo, priorità), utile per classifiche e "ultimi N"'
+        description: '"bar" = vertical bars, one per groupBy value (y = number of items); "number" = a single number with the total count of items; "list" = sorted list of individual items (title, type, priority), useful for rankings and "latest N"'
       },
       itemTypes: {
         type: Type.ARRAY,
         items: { type: Type.STRING, enum: ITEM_TYPES },
-        description: 'Quali elementi considerare: TOOL = tool, IDEA = WiP, NEED = esigenze. Se omesso, tutti'
+        description: 'Which items to consider: TOOL = tools, IDEA = WiP, NEED = needs. All if omitted'
       },
       where: {
         type: Type.OBJECT,
-        description: 'Filtri facoltativi, tutti in AND. I testi corrispondono all\'inizio del valore, senza distinguere maiuscole',
+        description: 'Optional filters, all combined with AND. Text values match the start of the value, case-insensitive',
         properties: {
-          customer: { type: Type.STRING, description: 'Cliente' },
+          customer: { type: Type.STRING, description: 'Customer' },
           tag: { type: Type.STRING, description: 'Tag' },
-          phase: { type: Type.STRING, description: 'Titolo o ID della fase' },
+          phase: { type: Type.STRING, description: 'Phase title or ID' },
           owner: { type: Type.STRING, description: 'Owner' },
-          priorityMax: { type: Type.NUMBER, description: 'Solo elementi con priorità impostata e <= a questo valore (1 = più alta)' },
-          createdWithinDays: { type: Type.NUMBER, description: 'Solo elementi creati negli ultimi N giorni' },
-          generalizationRequired: { type: Type.BOOLEAN, description: 'Solo tool da generalizzare (true) o non da generalizzare (false)' }
+          priorityMax: { type: Type.NUMBER, description: 'Only items with a priority set and <= this value (1 = highest)' },
+          createdWithinDays: { type: Type.NUMBER, description: 'Only items created in the last N days' },
+          generalizationRequired: { type: Type.BOOLEAN, description: 'Only tools to be generalized (true) or not to be generalized (false)' }
         }
       },
       groupBy: {
         type: Type.STRING,
         enum: DASHBOARD_GROUP_BY,
-        description: 'Solo per chart "bar" (obbligatorio): asse x. customer = clienti, tag, phase = fasi, type = tipo di elemento, owner, priority = priorità, month = mese di creazione'
+        description: 'Only for chart "bar" (required): x axis. customer = customers, tag, phase = phases, type = item type, owner, priority, month = creation month'
       },
       sortBy: {
         type: Type.STRING,
         enum: DASHBOARD_SORT_BY,
-        description: 'Solo per chart "list": criterio di ordinamento (default createdAt). Con "priority" compaiono solo gli elementi con priorità impostata'
+        description: 'Only for chart "list": sort criterion (default createdAt). With "priority" only items with a priority set are shown'
       },
       order: {
         type: Type.STRING,
         enum: ['asc', 'desc'],
-        description: 'Solo per chart "list". Per la priorità "asc" parte da 1 = la più alta; per le date "desc" parte dai più recenti'
+        description: 'Only for chart "list". For priority, "asc" starts from 1 = highest; for dates, "desc" starts from the most recent'
       },
-      limit: { type: Type.NUMBER, description: `Solo per chart "list": quanti elementi mostrare, da 1 a ${LIST_MAX_ROWS} (default ${LIST_DEFAULT_ROWS})` }
+      limit: { type: Type.NUMBER, description: `Only for chart "list": how many items to show, from 1 to ${LIST_MAX_ROWS} (default ${LIST_DEFAULT_ROWS})` }
     },
     required: ['slot', 'title', 'chart']
   }
@@ -266,8 +296,8 @@ const openAiTools = toolsList.map(decl => ({
 // Max model ↔ tool round trips per message (e.g. search_items, then update_item)
 const MAX_TOOL_ROUNDS = 5;
 
-function resolvePhaseId(input: string): string {
-  const phases = db.getPhases();
+function resolvePhaseId(input: string, practiceId: string): string {
+  const phases = db.getPhases(practiceId);
   const lower = (input || '').toLowerCase();
   const direct = phases.find(p => p.id === input);
   if (direct) return direct.id;
@@ -279,11 +309,11 @@ function resolvePhaseId(input: string): string {
     lower.includes(`phase ${p.position}`)
   );
   if (match) return match.id;
-  return phases[0]?.id || 'phase-1';
+  return phases[0]?.id || '';
 }
 
-function findItemByQuery(query: string) {
-  const items = db.getItems();
+function findItemByQuery(query: string, practiceId: string) {
+  const items = db.getItems({ practiceId });
   const q = query.trim().toLowerCase();
   // 1. Exact ID
   const byId = items.find(i => i.id === query);
@@ -317,14 +347,20 @@ function stageCreateItem(user: string, title: string, fields: any): any {
   return {
     requiresConfirmation: true,
     pendingAction: pending,
-    message: `Confermi la creazione di "${title}"?`
+    message: `Do you confirm the creation of "${title}"?`
   };
 }
 
-function executeTool(name: string, args: any, user: string): any {
+function executeTool(name: string, args: any, ctx: ChatContext): any {
+  const user = ctx.user?.username ?? 'anonymous';
+  const practiceId = ctx.practiceId;
+  if (WRITE_TOOLS.has(name)) {
+    const denied = writeDenied(ctx, practiceId);
+    if (denied) return { error: denied };
+  }
   switch (name) {
     case 'search_items': {
-      const items = db.getItems({ search: args.query, type: args.type });
+      const items = db.getItems({ practiceId, search: args.query, type: args.type });
       return {
         count: items.length,
         items: items.map(i => ({
@@ -338,8 +374,8 @@ function executeTool(name: string, args: any, user: string): any {
       };
     }
     case 'list_phases': {
-      const phases = db.getPhases();
-      const allItems = db.getItems();
+      const phases = db.getPhases(practiceId);
+      const allItems = db.getItems({ practiceId });
       return phases.map(p => ({
         id: p.id,
         position: p.position,
@@ -351,9 +387,9 @@ function executeTool(name: string, args: any, user: string): any {
       }));
     }
     case 'get_phase': {
-      const phaseId = resolvePhaseId(args.phaseId);
+      const phaseId = resolvePhaseId(args.phaseId, practiceId);
       const phase = db.getPhase(phaseId);
-      if (!phase) return { error: `Fase non trovata per ${args.phaseId}` };
+      if (!phase) return { error: `Phase not found for ${args.phaseId}` };
       const items = db.getItems({ phaseId: phase.id });
       return {
         phase,
@@ -363,13 +399,14 @@ function executeTool(name: string, args: any, user: string): any {
       };
     }
     case 'create_tool': {
-      const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid));
+      const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid, practiceId));
       const fields = {
         type: 'TOOL' as const,
         title: args.title,
         description: args.description || args.summary || '',
         summary: args.summary || args.description?.slice(0, 80) || '',
-        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : ['phase-1'],
+        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : [defaultPhaseId(practiceId, 'phase-1')],
+        practiceId,
         owner: args.owner || user,
         generalizationRequired: args.generalizationRequired ?? false,
         githubUrl: args.githubUrl,
@@ -385,18 +422,19 @@ function executeTool(name: string, args: any, user: string): any {
       return {
         success: true,
         createdItem: created,
-        message: `Tool "${created.title}" creato e collegato alle fasi indicate.`
+        message: `Tool "${created.title}" created and linked to the specified phases.`
       };
     }
     case 'create_idea': {
-      const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid));
+      const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid, practiceId));
       const fields = {
         type: 'IDEA' as const,
         title: args.title,
         problem: args.problem,
         requirements: args.requirements,
         expectedBenefit: args.expectedBenefit,
-        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : ['phase-3'],
+        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : [defaultPhaseId(practiceId, 'phase-3')],
+        practiceId,
         owner: args.owner || user,
       };
 
@@ -408,11 +446,11 @@ function executeTool(name: string, args: any, user: string): any {
       return {
         success: true,
         createdItem: created,
-        message: `Idea "${created.title}" creata con successo!`
+        message: `WiP "${created.title}" created successfully!`
       };
     }
     case 'create_need': {
-      const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid));
+      const resolvedPhaseIds = (args.phaseIds || []).map((pid: string) => resolvePhaseId(pid, practiceId));
       const fields = {
         type: 'NEED' as const,
         title: args.title,
@@ -420,7 +458,8 @@ function executeTool(name: string, args: any, user: string): any {
         currentProcess: args.currentProcess,
         desiredTool: args.desiredTool,
         desiredOutcome: args.desiredOutcome,
-        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : ['phase-1'],
+        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : [defaultPhaseId(practiceId, 'phase-1')],
+        practiceId,
         owner: args.owner || user,
       };
 
@@ -432,11 +471,12 @@ function executeTool(name: string, args: any, user: string): any {
       return {
         success: true,
         createdItem: created,
-        message: `Esigenza "${created.title}" registrata con successo!`
+        message: `Need "${created.title}" registered successfully!`
       };
     }
     case 'create_phase': {
       const fields = {
+        practiceId,
         title: args.title,
         description: args.description || '',
         targetIndex: typeof args.targetIndex === 'number' ? args.targetIndex : undefined,
@@ -456,7 +496,7 @@ function executeTool(name: string, args: any, user: string): any {
         return {
           requiresConfirmation: true,
           pendingAction: pending,
-          message: `Confermi la creazione della fase "${args.title}"?`
+          message: `Do you confirm the creation of the phase "${args.title}"?`
         };
       }
 
@@ -464,14 +504,14 @@ function executeTool(name: string, args: any, user: string): any {
       return {
         success: true,
         createdPhase: created,
-        message: `Fase "${created.title}" inserita alla posizione ${created.position}.`
+        message: `Phase "${created.title}" inserted at position ${created.position}.`
       };
     }
     case 'create_dashboard_tile': {
       const validated = validateTile(args);
       if ('error' in validated) return { error: validated.error };
       const { tile } = validated;
-      const replaces = db.getDashboardTiles().find(t => t.slot === tile.slot)?.title;
+      const replaces = db.getDashboardTiles(practiceId).find(t => t.slot === tile.slot)?.title;
 
       if (!args.confirmed) {
         const pending: PendingAction = {
@@ -479,24 +519,24 @@ function executeTool(name: string, args: any, user: string): any {
           type: 'CREATE_TILE',
           targetId: String(tile.slot),
           targetTitle: tile.title,
-          payload: { fields: tile, replaces },
+          payload: { fields: tile, replaces, practiceId },
           status: 'PENDING'
         };
         pendingActionsByUser.set(user, pending);
         return {
           requiresConfirmation: true,
           pendingAction: pending,
-          message: `Confermi la configurazione del tile N°${tile.slot} "${tile.title}"?`
+          message: `Do you confirm the configuration of tile N°${tile.slot} "${tile.title}"?`
         };
       }
 
-      db.upsertDashboardTile(tile);
+      db.upsertDashboardTile(practiceId, tile);
       pendingActionsByUser.delete(user);
-      return { success: true, message: `Tile N°${tile.slot} "${tile.title}" configurato.` };
+      return { success: true, message: `Tile N°${tile.slot} "${tile.title}" configured.` };
     }
     case 'update_item': {
-      const item = findItemByQuery(args.itemId);
-      if (!item) return { error: `Elemento non trovato per "${args.itemId}"` };
+      const item = findItemByQuery(args.itemId, practiceId);
+      if (!item) return { error: `Item not found for "${args.itemId}"` };
 
       const updates: any = {};
       if (args.title) updates.title = args.title;
@@ -504,7 +544,7 @@ function executeTool(name: string, args: any, user: string): any {
       if (args.description) updates.description = args.description;
       if (typeof args.generalizationRequired === 'boolean') updates.generalizationRequired = args.generalizationRequired;
       if (Array.isArray(args.phaseIds)) {
-        updates.phaseIds = args.phaseIds.map((pid: string) => resolvePhaseId(pid));
+        updates.phaseIds = args.phaseIds.map((pid: string) => resolvePhaseId(pid, practiceId));
       }
 
       if (!args.confirmed) {
@@ -520,7 +560,7 @@ function executeTool(name: string, args: any, user: string): any {
         return {
           requiresConfirmation: true,
           pendingAction: pending,
-          message: `Confermi la modifica di "${item.title}"?`
+          message: `Do you confirm the change to "${item.title}"?`
         };
       }
 
@@ -529,12 +569,12 @@ function executeTool(name: string, args: any, user: string): any {
       return {
         success: true,
         updatedItem: updated,
-        message: `Elemento "${item.title}" aggiornato.`
+        message: `Item "${item.title}" updated.`
       };
     }
     case 'delete_item': {
-      const item = findItemByQuery(args.itemId);
-      if (!item) return { error: `Elemento non trovato per "${args.itemId}"` };
+      const item = findItemByQuery(args.itemId, practiceId);
+      if (!item) return { error: `Item not found for "${args.itemId}"` };
 
       if (!args.confirmed) {
         // Stage pending action
@@ -549,7 +589,7 @@ function executeTool(name: string, args: any, user: string): any {
         return {
           requiresConfirmation: true,
           pendingAction: pending,
-          message: `Confermi l'eliminazione di "${item.title}"?`
+          message: `Do you confirm the deletion of "${item.title}"?`
         };
       }
 
@@ -557,50 +597,96 @@ function executeTool(name: string, args: any, user: string): any {
       pendingActionsByUser.delete(user);
       return {
         success: true,
-        message: `Elemento "${item.title}" eliminato con successo dal grafo.`
+        message: `Item "${item.title}" successfully deleted from the graph.`
       };
     }
     default:
-      return { error: `Tool sconosciuto: ${name}` };
+      return { error: `Unknown tool: ${name}` };
   }
 }
 
+// Typed confirm / cancel words, Italian and English. Compared after normalizeWord().
+const CONFIRM_WORDS = new Set([
+  'conferma', 'sì', 'si', 'confermo', 'procedi', 'elimina',
+  'yes', 'confirm', 'confirmed', 'proceed', 'delete', 'ok',
+]);
+const CANCEL_WORDS = new Set([
+  'annulla', 'no', 'lascia stare', 'interrompi',
+  'cancel', 'never mind', 'nevermind', 'stop',
+]);
+
+// Lower-case, trimmed, without trailing punctuation ("Yes!" -> "yes")
+function normalizeWord(text: string): string {
+  return text.toLowerCase().trim().replace(/[\s.!]+$/, '');
+}
+
+// English add-intents ("add a need", "add as WiP", "insert a phase", ...). The word boundary
+// after the noun keeps "new needs" / "phases" questions out of the create flows.
+const NEED_INTENT = /\b(?:(?:add|create|insert)\s+(?:an?\s+)?(?:new\s+)?(?:operational\s+)?need|new\s+(?:operational\s+)?need)\b/;
+const WIP_INTENT = /\b(?:(?:add|create)\s+(?:as\s+)?(?:an?\s+)?(?:new\s+)?(?:idea|wip)|new\s+(?:idea|wip))\b/;
+const PHASE_INTENT = /\b(?:(?:add|insert|create)\s+(?:an?\s+)?(?:new\s+)?phase|new\s+phase)\b/;
+
 // Fallback logic when GEMINI_API_KEY is absent or in local dev without network
-function executeLocalIntents(prompt: string, user: string, confirmedAction?: PendingAction, cancelAction?: boolean) {
+function executeLocalIntents(prompt: string, ctx: ChatContext, confirmedAction?: PendingAction, cancelAction?: boolean) {
+  const user = ctx.user?.username ?? 'anonymous';
+  const practiceId = ctx.practiceId;
   const p = prompt.toLowerCase().trim();
-  const allPhases = db.getPhases();
-  const allItems = db.getItems();
+  const word = normalizeWord(prompt);
+  const allPhases = db.getPhases(practiceId);
+  const allItems = db.getItems({ practiceId });
+  // Anonymous or unauthorised users get the refusal instead of any write intent below
+  const denied = writeDenied(ctx, practiceId);
 
   // 0. Handle cancellation
-  if (cancelAction || p === 'annulla' || p === 'no' || p === 'lascia stare' || p === 'interrompi') {
+  if (cancelAction || CANCEL_WORDS.has(word)) {
     const pending = pendingActionsByUser.get(user);
     pendingActionsByUser.delete(user);
     if (pending) {
       return {
-        reply: `Operazione annullata. **"${pending.targetTitle}"** non è stato eliminato. Nessuna modifica è stata apportata alla mappa.`,
+        reply: `Operation cancelled. **"${pending.targetTitle}"** was not changed. No changes were made to the map.`,
         pendingAction: { ...pending, status: 'CANCELLED' as const }
       };
     }
     return {
-      reply: 'Nessuna operazione in sospeso da annullare.'
+      reply: 'There is no pending operation to cancel.'
     };
   }
 
   // 1. Handle confirmation
-  if (confirmedAction || p === 'conferma' || p === 'sì' || p === 'si' || p === 'confermo' || p === 'procedi' || p === 'elimina') {
-    const actionToExec = confirmedAction || pendingActionsByUser.get(user);
+  if (confirmedAction || CONFIRM_WORDS.has(word)) {
+    // Anonymous visitors share one username: they can only confirm through the card, never by typing
+    const actionToExec = confirmedAction || (ctx.user ? pendingActionsByUser.get(user) : undefined);
+    const isNeedCreation = actionToExec?.type === 'CREATE_ITEM' && actionToExec.payload?.fields?.type === 'NEED';
+    if (actionToExec && !isNeedCreation) {
+      // Re-check on the practice that really owns the target: the payload comes from the client
+      const fieldsPractice = actionToExec.payload?.fields?.practiceId ?? actionToExec.payload?.practiceId;
+      const targetPractice = actionToExec.type === 'DELETE_ITEM' || actionToExec.type === 'UPDATE_ITEM'
+        ? db.getItemPractice(actionToExec.targetId) ?? practiceId
+        : typeof fieldsPractice === 'string' ? fieldsPractice : practiceId;
+      const refusal = writeDenied(ctx, targetPractice);
+      if (refusal) {
+        pendingActionsByUser.delete(user);
+        return { reply: refusal };
+      }
+      if (actionToExec.type === 'CREATE_ITEM' || actionToExec.type === 'CREATE_PHASE') {
+        actionToExec.payload = { ...actionToExec.payload, fields: { ...actionToExec.payload?.fields, practiceId: targetPractice } };
+      }
+    }
+    if (isNeedCreation && !ctx.user && !anonymousNeedAllowed(ctx.ip ?? 'unknown')) {
+      return { reply: 'You have submitted too many needs in a short time: try again later or sign in.' };
+    }
     if (actionToExec && actionToExec.type === 'DELETE_ITEM') {
       const deleted = db.deleteItem(actionToExec.targetId, user);
       pendingActionsByUser.delete(user);
       if (deleted) {
         return {
-          reply: `✓ L'elemento **"${actionToExec.targetTitle}"** è stato **eliminato definitivamente** dal grafo e dal database.`,
-          actionSummary: `Eliminato: "${actionToExec.targetTitle}"`,
+          reply: `✓ The item **"${actionToExec.targetTitle}"** has been **permanently deleted** from the graph and the database.`,
+          actionSummary: `Deleted: "${actionToExec.targetTitle}"`,
           pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
         };
       } else {
         return {
-          reply: `Non è stato possibile eliminare l'elemento (potrebbe essere già stato rimosso).`
+          reply: `The item could not be deleted (it may already have been removed).`
         };
       }
     }
@@ -608,8 +694,8 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       const updated = db.updateItem(actionToExec.targetId, actionToExec.payload || {}, user);
       pendingActionsByUser.delete(user);
       return {
-        reply: `✓ L'elemento **"${actionToExec.targetTitle}"** è stato aggiornato con successo.`,
-        actionSummary: `Aggiornato: "${actionToExec.targetTitle}"`,
+        reply: `✓ The item **"${actionToExec.targetTitle}"** was updated successfully.`,
+        actionSummary: `Updated: "${actionToExec.targetTitle}"`,
         pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
       };
     }
@@ -617,8 +703,8 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       const created = db.createItem(actionToExec.payload.fields, user);
       pendingActionsByUser.delete(user);
       return {
-        reply: `✓ **"${created.title}"** è stato creato con successo.`,
-        actionSummary: `Creato: "${created.title}"`,
+        reply: `✓ **"${created.title}"** was created successfully.`,
+        actionSummary: `Created: "${created.title}"`,
         createdItem: created,
         pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
       };
@@ -627,13 +713,14 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       const validated = validateTile(actionToExec.payload?.fields);
       if ('error' in validated) {
         pendingActionsByUser.delete(user);
-        return { reply: `Non è stato possibile configurare il tile: ${validated.error}.` };
+        return { reply: `The tile could not be configured: ${validated.error}.` };
       }
-      db.upsertDashboardTile(validated.tile);
+      const tilePractice = actionToExec.payload?.practiceId ?? practiceId;
+      db.upsertDashboardTile(tilePractice, validated.tile);
       pendingActionsByUser.delete(user);
       return {
-        reply: `✓ Tile N°${validated.tile.slot} **"${validated.tile.title}"** configurato nella dashboard.`,
-        actionSummary: `Tile N°${validated.tile.slot} configurato: "${validated.tile.title}"`,
+        reply: `✓ Tile N°${validated.tile.slot} **"${validated.tile.title}"** configured on the dashboard.`,
+        actionSummary: `Tile N°${validated.tile.slot} configured: "${validated.tile.title}"`,
         pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
       };
     }
@@ -641,21 +728,24 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       const created = db.createPhase(actionToExec.payload.fields, user);
       pendingActionsByUser.delete(user);
       return {
-        reply: `✓ Fase **"${created.title}"** inserita alla posizione ${created.position}.`,
-        actionSummary: `Fase creata: "${created.title}"`,
+        reply: `✓ Phase **"${created.title}"** inserted at position ${created.position}.`,
+        actionSummary: `Phase created: "${created.title}"`,
         createdPhase: created,
         pendingAction: { ...actionToExec, status: 'CONFIRMED' as const }
       };
     }
   }
 
-  // 2. Intent: Cancella / Elimina elemento (e.g. "cancellami xxx", "elimina il tool Document AI", "cancella esigenza xxx")
-  const deleteRegex = /^(?:cancellami|cancella|elimina|rimuovi|delete)\s+(?:l'esigenza|il tool|l'idea|la fase|l'elemento)?\s*(.+)/i;
+  // 2. Intent: delete an item (e.g. "delete the tool Document AI", "remove need xxx", "cancellami xxx", "elimina il tool Document AI")
+  const deleteRegex = /^(?:cancellami|cancella|elimina|rimuovi|delete|remove)\s+(?:(?:l'esigenza|il tool|l'idea|la fase|l'elemento)\s*|(?:the\s+|an?\s+|il\s+|lo\s+|la\s+)?(?:need|tool|idea|wip|phase|item|esigenza|fase|elemento)\s+)?(.+)/i;
   const deleteMatch = prompt.match(deleteRegex);
   if (deleteMatch && deleteMatch[1]) {
     const rawTarget = deleteMatch[1].replace(/["']/g, '').trim();
-    const item = findItemByQuery(rawTarget);
+    // The optional noun may belong to the title (e.g. "Tool Finder"): retry with the full text
+    const fullTarget = prompt.replace(/^\S+\s+/, '').replace(/["']/g, '').trim();
+    const item = findItemByQuery(rawTarget, practiceId) ?? findItemByQuery(fullTarget, practiceId);
     if (item) {
+      if (denied) return { reply: denied };
       const pending: PendingAction = {
         id: `act-${Date.now()}`,
         type: 'DELETE_ITEM',
@@ -665,26 +755,27 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       };
       pendingActionsByUser.set(user, pending);
 
-      const typeLabel = item.type === 'TOOL' ? 'Tool' : item.type === 'IDEA' ? 'Idea' : 'Esigenza';
+      const typeLabel = item.type === 'TOOL' ? 'Tool' : item.type === 'IDEA' ? 'WiP' : 'Need';
       return {
-        reply: `⚠️ **Richiesta di eliminazione**\n\nSei sicuro di voler eliminare **"${item.title}"** (${typeLabel})?\n\nQuesta operazione cancellerà definitivamente il nodo e tutte le sue connessioni dal grafo. Clicca sul pulsante qui sotto per confermare o annullare:`,
+        reply: `⚠️ **Deletion request**\n\nAre you sure you want to delete **"${item.title}"** (${typeLabel})?\n\nThis will permanently remove the node and all its connections from the graph. Use the buttons below to confirm or cancel:`,
         pendingAction: pending
       };
     }
 
     return {
-      reply: `Non ho trovato nessun elemento corrispondente a **"${rawTarget}"**. Verifica il nome o cerca tra gli elementi della mappa.`
+      reply: `I could not find any item matching **"${rawTarget}"**. Check the name or browse the items on the map.`
     };
   }
 
-  // 3. Intent: Modifica elemento (e.g. "modifica xxx: nuova descrizione...", "rinomina xxx in yyy")
-  const renameRegex = /(?:rinomina|modifica titolo di)\s+["']?([^"']+)["']?\s+in\s+["']?([^"']+)["']?/i;
+  // 3. Intent: rename an item (e.g. "rename xxx to yyy", "rinomina xxx in yyy")
+  const renameRegex = /(?:rinomina|rename|modifica titolo di|change (?:the )?title of)\s+["']?([^"']+)["']?\s+(?:in|to)\s+["']?([^"']+)["']?/i;
   const renameMatch = prompt.match(renameRegex);
   if (renameMatch && renameMatch[1] && renameMatch[2]) {
     const targetName = renameMatch[1].trim();
     const newTitle = renameMatch[2].trim();
-    const item = findItemByQuery(targetName);
+    const item = findItemByQuery(targetName, practiceId);
     if (item) {
+      if (denied) return { reply: denied };
       const pending: PendingAction = {
         id: `act-${Date.now()}`,
         type: 'UPDATE_ITEM',
@@ -695,14 +786,15 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       };
       pendingActionsByUser.set(user, pending);
       return {
-        reply: `⚠️ **Richiesta di modifica**\n\nVuoi confermare la ridenominazione di **"${item.title}"** in **"${newTitle}"**?`,
+        reply: `⚠️ **Change request**\n\nDo you confirm renaming **"${item.title}"** to **"${newTitle}"**?`,
         pendingAction: pending
       };
     }
   }
 
-  // 4. Intent: Aggiungi esigenza
-  if (p.includes('aggiungi un\'esigenza') || p.includes('aggiungi esigenza') || p.includes('nuova esigenza')) {
+  // 4. Intent: add a need
+  if (p.includes('aggiungi un\'esigenza') || p.includes('aggiungi esigenza') || p.includes('nuova esigenza') || NEED_INTENT.test(p)) {
+    // Needs can be submitted by anyone, so no permission check here
     let targetPhase = allPhases.find(ph => p.includes(ph.title.toLowerCase()) || p.includes(ph.id));
     if (!targetPhase) {
       if (p.includes('readiness') || p.includes('provisioning')) targetPhase = allPhases.find(ph => ph.id === 'phase-3');
@@ -711,29 +803,32 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
       else if (p.includes('devops') || p.includes('adaptation')) targetPhase = allPhases.find(ph => ph.id === 'phase-4');
       else targetPhase = allPhases[1];
     }
+    targetPhase ??= allPhases[0];
 
-    let title = 'Nuova Esigenza Operativa';
+    let title = 'New operational need';
     const colonMatch = prompt.split(/:\s*/);
     if (colonMatch.length > 1) {
       title = colonMatch[1].split('.')[0].trim();
       if (title.length > 60) title = title.substring(0, 60);
     } else {
-      title = prompt.replace(/aggiungi (un'esigenza|esigenza) (a|alla fase|in)?/i, '').trim();
+      title = prompt.replace(/(?:aggiungi (?:un'esigenza|esigenza)|(?:add|create|insert) (?:an? )?(?:new )?(?:operational )?need)\s*(?:(?:alla fase|a|in|to|for)\s+)?/i, '').trim();
     }
 
     const fields = {
       type: 'NEED' as const,
       title,
       description: prompt,
-      desiredTool: 'Agente / Tool automatizzato',
-      phaseIds: [targetPhase ? targetPhase.id : 'phase-1'],
+      desiredTool: 'Automated agent / tool',
+      practiceId,
+      phaseIds: targetPhase ? [targetPhase.id] : [],
     };
     const staged = stageCreateItem(user, title, fields);
     return { reply: staged.message, pendingAction: staged.pendingAction };
   }
 
-  // 5. Intent: Aggiungi idea
-  if (p.includes('aggiungi come idea') || p.includes('aggiungi idea') || p.includes('nuova idea')) {
+  // 5. Intent: add a WiP (idea)
+  if (p.includes('aggiungi come idea') || p.includes('aggiungi idea') || p.includes('nuova idea') || WIP_INTENT.test(p)) {
+    if (denied) return { reply: denied };
     let targetPhases = allPhases.filter(ph => p.includes(ph.title.toLowerCase()) || p.includes(ph.id));
     if (targetPhases.length === 0) {
       if (p.includes('kubernetes') || p.includes('openshift') || p.includes('mcp')) {
@@ -742,19 +837,21 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
         targetPhases = [allPhases[2] || allPhases[0]];
       }
     }
+    if (targetPhases.length === 0 || !targetPhases[0]) targetPhases = allPhases.slice(0, 1);
 
-    let title = 'Nuova Idea';
+    let title = 'New WiP';
     if (p.includes('mcp')) title = 'Kubernetes / OpenShift MCP';
     else {
-      const match = prompt.match(/idea\s+(?:per|di)?\s*([^,.:]+)/i);
-      if (match && match[1]) title = match[1].trim();
+      const match = prompt.match(/(?:idea|wip)\s+(?:(?:per|di|for|about)\s+)?([^,.:]+)/i);
+      if (match && match[1]) title = match[1].trim().replace(/^(?:an?|the|un|una|uno)\s+/i, '') || title;
     }
 
     const fields = {
       type: 'IDEA' as const,
       title,
       problem: prompt,
-      requirements: 'Integrazione con cluster e protocollo MCP',
+      requirements: 'Integration with clusters and the MCP protocol',
+      practiceId,
       phaseIds: targetPhases.map(ph => ph.id),
       owner: user,
     };
@@ -762,26 +859,32 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
     return { reply: staged.message, pendingAction: staged.pendingAction };
   }
 
-  // 6. Intent: Aggiungi fase
-  if (p.includes('aggiungi fase') || p.includes('inserisci una fase') || p.includes('nuova fase')) {
-    let title = 'Discovery Cliente';
-    if (p.includes('discovery')) title = 'Discovery Cliente';
+  // 6. Intent: add a phase
+  if (p.includes('aggiungi fase') || p.includes('inserisci una fase') || p.includes('nuova fase') || PHASE_INTENT.test(p)) {
+    if (denied) return { reply: denied };
+    let title = 'Customer Discovery';
+    if (p.includes('discovery')) title = 'Customer Discovery';
     else {
-      const m = prompt.match(/fase\s+["']?([^"'.:,]+)["']?/i);
-      if (m && m[1]) title = m[1].trim();
+      const m = prompt.match(/(?:fase|phase)\s+["']?([^"'.:,]+)["']?/i);
+      if (m && m[1]) {
+        // Drop a trailing position clause ("... before Assessment") and leading "called/named"
+        const cleaned = m[1].replace(/\s+(?:prima di|before)\s+.*$/i, '').replace(/^(?:called|named|chiamata|denominata)\s+/i, '').trim();
+        if (cleaned && !/^(?:prima di|before)\b/i.test(cleaned)) title = cleaned;
+      }
     }
 
     let targetIdx = 1;
-    if (p.includes('prima di assessment')) {
+    if (p.includes('prima di assessment') || p.includes('before assessment')) {
       const assess = allPhases.find(ph => ph.id === 'phase-1');
       targetIdx = assess ? assess.position : 1;
     }
 
     const fields = {
+      practiceId,
       title,
-      description: 'Attività preliminari di allineamento e discovery con gli stakeholder.',
+      description: 'Preliminary alignment and discovery activities with stakeholders.',
       targetIndex: targetIdx,
-      activities: ['Kick-off meeting', 'Interviste stakeholder', 'Raccolta accessi e prerequisiti']
+      activities: ['Kick-off meeting', 'Stakeholder interviews', 'Collection of access and prerequisites']
     };
     const pending: PendingAction = {
       id: `act-${Date.now()}`,
@@ -793,101 +896,96 @@ function executeLocalIntents(prompt: string, user: string, confirmedAction?: Pen
     };
     pendingActionsByUser.set(user, pending);
     return {
-      reply: `Confermi la creazione della fase "${title}"?`,
+      reply: `Do you confirm the creation of the phase "${title}"?`,
       pendingAction: pending
     };
   }
 
-  // 7. Domande sui Tool di una fase
-  if (p.includes('che tool abbiamo') || p.includes('quali tool') || p.includes('tool per')) {
+  // 7. Questions about the tools of a phase
+  if (p.includes('che tool abbiamo') || p.includes('quali tool') || p.includes('tool per') || p.includes('which tools') || p.includes('what tools') || p.includes('tools for')) {
     const matchedPhase = allPhases.find(ph => p.includes(ph.title.toLowerCase()) || p.includes(ph.id));
     if (matchedPhase) {
       const tools = allItems.filter(i => i.type === 'TOOL' && i.phaseIds.includes(matchedPhase.id));
       if (tools.length === 0) {
         return {
-          reply: `Per la fase **${matchedPhase.title}** attualmente **non sono mappati Tool specifici** (questo evidenzia un gap di automazione). Puoi cliccare su "+" sopra la fase per aggiungerne uno!`
+          reply: `There are currently **no specific Tools mapped** to the phase **${matchedPhase.title}** (this highlights an automation gap). You can click "+" above the phase to add one!`
         };
       }
-      const list = tools.map((t, i) => `${i + 1}. **${t.title}** ${t.generalizationRequired ? '*(Da generalizzare)*' : ''}: ${t.summary || t.description}`).join('\n');
+      const list = tools.map((t, i) => `${i + 1}. **${t.title}** ${t.generalizationRequired ? '*(To be generalized)*' : ''}: ${t.summary || t.description}`).join('\n');
       return {
-        reply: `Per la fase **${matchedPhase.title}** abbiamo attualmente ${tools.length} tool:\n\n${list}`
+        reply: `For the phase **${matchedPhase.title}** we currently have ${tools.length} tool${tools.length === 1 ? '' : 's'}:\n\n${list}`
       };
     }
   }
 
-  // 8. Tool da generalizzare
-  if (p.includes('generalizzare') || p.includes('da generalizzare')) {
+  // 8. Tools to be generalized
+  if (p.includes('generalizzare') || p.includes('da generalizzare') || p.includes('generaliz')) {
     const generalizeTools = allItems.filter(i => i.type === 'TOOL' && i.generalizationRequired);
-    const list = generalizeTools.map((t, i) => `${i + 1}. **${t.title}** (Copre: ${t.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')}) - Owner: ${t.owner || 'N/A'}`).join('\n');
+    const list = generalizeTools.map((t, i) => `${i + 1}. **${t.title}** (Covers: ${t.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')}) - Owner: ${t.owner || 'N/A'}`).join('\n');
     return {
-      reply: `I seguenti **${generalizeTools.length} tool** sono contrassegnati come **"Da generalizzare"** per poter essere riutilizzati in altri progetti:\n\n${list}`
+      reply: `The following **${generalizeTools.length} tool${generalizeTools.length === 1 ? '' : 's'}** ${generalizeTools.length === 1 ? 'is' : 'are'} marked as **"To be generalized"** so they can be reused in other projects:\n\n${list}`
     };
   }
 
-  // 9. Tool multi-fase
-  if (p.includes('più fasi') || p.includes('multifase') || p.includes('trasversal')) {
+  // 9. Multi-phase tools
+  if (p.includes('più fasi') || p.includes('multifase') || p.includes('trasversal') || p.includes('multiple phases') || p.includes('multi-phase') || p.includes('multiphase') || p.includes('cross-phase') || p.includes('more than one phase')) {
     const multi = allItems.filter(i => i.type === 'TOOL' && i.phaseIds.length > 1);
-    const list = multi.map(t => `- **${t.title}**: copre **${t.phaseIds.length} fasi** (${t.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')})`).join('\n');
+    const list = multi.map(t => `- **${t.title}**: covers **${t.phaseIds.length} phases** (${t.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')})`).join('\n');
     return {
-      reply: `I tool trasversali che coprono più fasi sono:\n\n${list}`
+      reply: `The cross-phase tools that cover multiple phases are:\n\n${list}`
     };
   }
 
-  // 10. Esigenze scoperte o aperte
-  if (p.includes('esigenze') || p.includes('gap')) {
+  // 10. Uncovered or open needs
+  if (p.includes('esigenze') || p.includes('needs') || p.includes('gap')) {
     const needs = allItems.filter(i => i.type === 'NEED');
     const list = needs.slice(0, 5).map(n => `- **${n.title}** (${n.phaseIds.map(pid => allPhases.find(p => p.id === pid)?.title).join(', ')}): ${n.summary || n.description}`).join('\n');
     return {
-      reply: `Ci sono attualmente **${needs.length} esigenze operative** aperte mappate sul processo. Eccone alcune prioritarie:\n\n${list}\n\nPuoi cliccare sulle sfere verdi nella mappa per approfondirle.`
+      reply: `There are currently **${needs.length} open operational needs** mapped on the process. Here are some of them:\n\n${list}\n\nYou can click the green bubbles on the map to explore them further.`
     };
   }
 
-  // Risposta standard
+  // Default reply
   return {
-    reply: `Sono il **T&A Assistant**. Conosco l'intero processo end-to-end (${allPhases.length} fasi), i tool esistenti, le idee e le esigenze operative.
+    reply: `I am the **ADM Assistant** of the **${practiceName(practiceId)}** practice. I know the end-to-end process (${allPhases.length} phases), the existing tools, the WiP items and the operational needs.
 
-Puoi chiedermi di:
-- *"Che tool abbiamo per Assessment?"*
-- *"Quali tool coprono più fasi?"*
-- *"Quali tool devono essere generalizzati?"*
-- *"Aggiungi un'esigenza a Readiness: Terraform automatizzato"*
-- *"Cancellami [nome elemento]"* (con conferma guidata)
-- *"Rinomina [elemento] in [nuovo nome]"* (con conferma)`
+You can ask me:
+- *"Which tools do we have for Assessment?"*
+- *"Which tools cover multiple phases?"*
+- *"Which tools need to be generalized?"*
+- *"Are there uncovered needs?"*
+- *"Add a need to Readiness: automated Terraform"*
+- *"Add as WiP an MCP for Kubernetes"*
+- *"Delete [item name]"* (with guided confirmation)
+- *"Rename [item] to [new name]"* (with confirmation)`
   };
 }
 
 export async function handleAssistantChat(
   userMessage: string,
-  user: string = 'local.user',
+  ctx: ChatContext,
   confirmedAction?: PendingAction,
   cancelAction?: boolean
 ): Promise<{ reply: string; actionSummary?: string; pendingAction?: PendingAction }> {
+  const user = ctx.user?.username ?? 'anonymous';
   // If user is directly confirming or cancelling an action
   if (confirmedAction || cancelAction) {
-    return executeLocalIntents(userMessage, user, confirmedAction, cancelAction);
+    return executeLocalIntents(userMessage, ctx, confirmedAction, cancelAction);
   }
 
   // Check if message is a confirmation or cancellation of a stored pending action
-  const pending = pendingActionsByUser.get(user);
-  if (pending && (
-    userMessage.toLowerCase().trim() === 'sì' ||
-    userMessage.toLowerCase().trim() === 'si' ||
-    userMessage.toLowerCase().trim() === 'conferma' ||
-    userMessage.toLowerCase().trim() === 'procedi' ||
-    userMessage.toLowerCase().trim() === 'elimina' ||
-    userMessage.toLowerCase().trim() === 'annulla' ||
-    userMessage.toLowerCase().trim() === 'no'
-  )) {
-    return executeLocalIntents(userMessage, user, confirmedAction, cancelAction);
+  const pending = ctx.user ? pendingActionsByUser.get(user) : undefined;
+  const typedWord = normalizeWord(userMessage);
+  if (pending && (CONFIRM_WORDS.has(typedWord) || CANCEL_WORDS.has(typedWord))) {
+    return executeLocalIntents(userMessage, ctx, confirmedAction, cancelAction);
   }
 
   async function handleOpenAIChat(
   userMessage: string,
-  user: string,
   settings: AISettings
 ): Promise<{ reply: string; actionSummary?: string; pendingAction?: PendingAction } | null> {
-  const allPhases = db.getPhases();
-  const allItems = db.getItems();
+  const allPhases = db.getPhases(ctx.practiceId);
+  const allItems = db.getItems({ practiceId: ctx.practiceId });
 
   let baseUrl = (settings.openaiBaseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
   if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
@@ -896,19 +994,20 @@ export async function handleAssistantChat(
   const endpointError = checkEndpoint(baseUrl);
   if (endpointError) throw new Error(endpointError);
 
-  const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
-L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
-Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, creare tool, idee, esigenze e fasi, modificare ed eliminare elementi.
-Per creare, modificare o eliminare qualcosa DEVI chiamare la funzione corrispondente: non dichiarare mai di aver eseguito un'operazione senza averla chiamata.
-Modifiche ed eliminazioni non sono immediate: il sistema mostra all'utente una card di conferma. In quel caso di' all'utente di confermare dalla card, non che l'operazione è completata.
-Nei parametri phaseIds usa gli ID delle fasi (es. "phase-1").
-La dashboard ha ${DASHBOARD_SLOTS} tile numerati da 1. Quando l'utente chiede di configurare un tile (es. "tile N°3", "le 3 esigenze con priorità più alta") chiama SUBITO create_dashboard_tile con lo slot indicato, traducendo la richiesta in una query (itemTypes, where) e in un tipo di visualizzazione (chart: bar, number o list): non proporre alternative a parole e non chiedere conferma, perché il sistema mostra una card con l'anteprima che l'utente conferma. La priorità 1 è la più alta. Se manca lo slot, chiedilo. Solo se la richiesta non è proprio esprimibile con i parametri della funzione, spiega il limite.
-Rispondi in modo professionale, conciso e in lingua italiana, utilizzando formattazione markdown (elenchi puntati, **grassetto**, ecc.).
-Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze) e ${allPhases.length} fasi.
-Fasi di processo:
+  const systemInstruction = `You are the expert assistant of ADM Project Blueprint for Accenture.
+The application has a map for each practice; you are working on the practice "${practiceName(ctx.practiceId)}": its process is a sequence of central chevron blocks (phases) with bubbles above (Tools and WiP) and bubbles below (Needs). Everything you see and create concerns this practice only.
+${ctx.user ? '' : "The user is not signed in: they can only browse the map. If they ask to create, edit or delete something, tell them they must sign in with the \"Sign in\" button; the write functions will return an error.\n"}
+You have access to system functions to search items, look up phases, create tools, WiP items, needs and phases, and edit or delete items.
+To create, edit or delete anything you MUST call the corresponding function: never claim to have performed an operation without calling it.
+Edits and deletions are not immediate: the system shows the user a confirmation card. In that case tell the user to confirm from the card, not that the operation is complete.
+In the phaseIds parameters use the phase IDs listed below.
+The dashboard has ${DASHBOARD_SLOTS} tiles numbered from 1. When the user asks to configure a tile (e.g. "tile N°3", "the 3 needs with the highest priority") call create_dashboard_tile IMMEDIATELY with the given slot, translating the request into a query (itemTypes, where) and a visualization type (chart: bar, number or list): do not propose alternatives in words and do not ask for confirmation, because the system shows a preview card that the user confirms. Priority 1 is the highest. If the slot is missing, ask for it. Only if the request cannot be expressed with the function parameters, explain the limitation.
+Reply in a professional, concise way, in the same language the user writes in, using markdown formatting (bullet lists, **bold**, etc.).
+There are currently ${allItems.length} items (${allItems.filter(i => i.type === 'TOOL').length} tools, ${allItems.filter(i => i.type === 'IDEA').length} WiP, ${allItems.filter(i => i.type === 'NEED').length} needs) and ${allPhases.length} phases.
+Process phases:
 ${allPhases.map(p => `- ${p.id} (pos ${p.position}): ${p.title} - ${p.description}`).join('\n')}
-Elementi attuali:
-${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds.join(', ')}): ${i.summary || i.description?.substring(0, 100)}`).join('\n')}`;
+Current items:
+${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Phases: ${i.phaseIds.join(', ')}): ${i.summary || i.description?.substring(0, 100)}`).join('\n')}`;
 
   const messages: any[] = [
     { role: 'system', content: systemInstruction },
@@ -944,12 +1043,12 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
       // engine, which could run the same action twice
       if (actionSummaries.length > 0 || pendingAction) {
         return {
-          reply: 'Ho eseguito le operazioni richieste, ma il modello non ha completato la risposta.',
+          reply: 'I carried out the requested operations, but the model did not complete its reply.',
           actionSummary: actionSummaries.join(' · ') || undefined,
           pendingAction
         };
       }
-      throw new Error(`Errore API OpenAI custom (${res.status}): ${errorText.substring(0, 100)}`);
+      throw new Error(`Custom OpenAI API error (${res.status}): ${errorText.substring(0, 100)}`);
     }
 
     const data = await res.json();
@@ -958,7 +1057,7 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
 
     if (!toolCalls || toolCalls.length === 0) {
       return {
-        reply: message?.content || 'Nessuna risposta dal modello custom.',
+        reply: message?.content || 'No response from the custom model.',
         actionSummary: actionSummaries.join(' · ') || undefined,
         pendingAction
       };
@@ -974,9 +1073,9 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
         const args = JSON.parse(call.function?.arguments || '{}');
         // The model can never confirm on the user's behalf
         delete args.confirmed;
-        result = executeTool(call.function?.name, args, user);
+        result = executeTool(call.function?.name, args, ctx);
       } catch (err: any) {
-        result = { error: err.message || 'Errore durante l\'esecuzione della funzione' };
+        result = { error: err.message || 'Error while running the function' };
       }
       if (result?.success && result.message) actionSummaries.push(result.message);
       if (result?.pendingAction) pendingAction = result.pendingAction;
@@ -986,7 +1085,7 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
 
   // Only reached if the model ignores tool_choice 'none' on the last round
   return {
-    reply: 'Nessuna risposta dal modello custom.',
+    reply: 'No response from the custom model.',
     actionSummary: actionSummaries.join(' · ') || undefined,
     pendingAction
   };
@@ -999,23 +1098,26 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
     p.startsWith('cancella') ||
     p.startsWith('elimina') ||
     p.startsWith('rimuovi') ||
-    p.startsWith('rinomina')
+    p.startsWith('rinomina') ||
+    p.startsWith('delete') ||
+    p.startsWith('remove') ||
+    p.startsWith('rename')
   ) {
-    return executeLocalIntents(userMessage, user);
+    return executeLocalIntents(userMessage, ctx);
   }
 
   // 1. Check if Custom OpenAI is enabled and configured
   const aiSettings = settingsStore.getSettings();
   if (aiSettings.provider === 'openai' && aiSettings.openaiApiKey) {
     try {
-      const openAiResult = await handleOpenAIChat(userMessage, user, aiSettings);
+      const openAiResult = await handleOpenAIChat(userMessage, aiSettings);
       if (openAiResult) return openAiResult;
     } catch (err: any) {
       // No fallback: the keyword engine below would write wrong data to the graph
       // (e.g. an idea titled with the whole sentence) when the provider is down
       console.warn('Custom OpenAI execution error:', err.message);
       return {
-        reply: `⚠️ Il provider AI configurato non ha risposto correttamente, quindi **nessuna modifica è stata apportata alla mappa**.\n\nDettaglio: \`${err.message}\`\n\nRiprova tra poco o verifica la configurazione in **Settings AI**.`
+        reply: `⚠️ The configured AI provider did not respond correctly, so **no changes were made to the map**.\n\nDetails: \`${err.message}\`\n\nTry again shortly or check the configuration in **AI Settings**.`
       };
     }
   }
@@ -1028,15 +1130,16 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Fasi: ${i.phaseIds
       const endpointError = checkEndpoint(geminiBaseUrl);
       if (endpointError) throw new Error(endpointError);
       const ai = createGeminiClient(geminiKey, geminiBaseUrl);
-      const allPhases = db.getPhases();
-      const allItems = db.getItems();
-      const systemInstruction = `Sei l'assistente esperto di T&A AI Toolbox per Accenture Technology & Architecture.
-L'applicazione visualizza il processo di lavoro T&A a "matitoni" centrali con sfere sopra (Tool e Idee) e sfere sotto (Esigenze).
-Hai accesso a funzioni di sistema per cercare elementi, consultare le fasi, creare, modificare ed eliminare tool, idee ed esigenze.
-Per configurare un tile della dashboard (numerati da 1 a ${DASHBOARD_SLOTS}) USA subito create_dashboard_tile con lo slot indicato dall'utente, traducendo la richiesta in una query e in un tipo di visualizzazione (bar, number, list); la conferma è una card mostrata dal sistema.
-Quando l'utente chiede di eliminare o modificare un elemento, USA delete_item o update_item. Per l'eliminazione, richiedi SEMPRE conferma preventiva all'utente prima di cancellare definitivamente.
-Rispondi in modo professionale, conciso e in lingua italiana.
-Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type === 'TOOL').length} tool, ${allItems.filter(i => i.type === 'IDEA').length} idee, ${allItems.filter(i => i.type === 'NEED').length} esigenze).`;
+      const allPhases = db.getPhases(ctx.practiceId);
+      const allItems = db.getItems({ practiceId: ctx.practiceId });
+      const systemInstruction = `You are the expert assistant of ADM Project Blueprint for Accenture.
+The application has a map for each practice; you are working on the practice "${practiceName(ctx.practiceId)}": its process is a sequence of central chevron blocks (phases) with bubbles above (Tools and WiP) and bubbles below (Needs). Everything you see and create concerns this practice only.
+${ctx.user ? '' : "The user is not signed in: they can only browse the map. If they ask to create, edit or delete something, tell them they must sign in with the \"Sign in\" button; the write functions will return an error.\n"}
+You have access to system functions to search items, look up phases, and create, edit and delete tools, WiP items and needs.
+To configure a dashboard tile (numbered from 1 to ${DASHBOARD_SLOTS}) IMMEDIATELY use create_dashboard_tile with the slot given by the user, translating the request into a query and a visualization type (bar, number, list); confirmation is a card shown by the system.
+When the user asks to delete or edit an item, USE delete_item or update_item. For deletion, ALWAYS ask the user for confirmation before permanently deleting.
+Reply in a professional, concise way, in the same language the user writes in, using markdown formatting where useful.
+There are currently ${allItems.length} items (${allItems.filter(i => i.type === 'TOOL').length} tools, ${allItems.filter(i => i.type === 'IDEA').length} WiP, ${allItems.filter(i => i.type === 'NEED').length} needs).`;
 
       const response = await ai.models.generateContent({
         model: geminiModel,
@@ -1058,7 +1161,7 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
           // The model can never confirm on the user's behalf (same rule as the OpenAI branch)
           const args = { ...(call.args ?? {}) };
           delete args.confirmed;
-          const result = executeTool(call.name, args, user);
+          const result = executeTool(call.name, args, ctx);
           toolResponses.push(result);
           if (result && (result as any).message) {
             actionSummary = (result as any).message;
@@ -1080,7 +1183,7 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
             },
             {
               role: 'user',
-              parts: [{ text: `Risultati dell'esecuzione:\n${JSON.stringify(toolResponses, null, 2)}\nSpiega all'utente il risultato o chiedi conferma se richiesta.` }]
+              parts: [{ text: `Execution results:\n${JSON.stringify(toolResponses, null, 2)}\nExplain the result to the user or ask for confirmation if required.` }]
             }
           ],
           config: {
@@ -1089,14 +1192,14 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
         });
 
         return {
-          reply: followUp.text || 'Operazione elaborata.',
+          reply: followUp.text || 'Operation processed.',
           actionSummary,
           pendingAction: pendingActionToReturn
         };
       }
 
       return {
-        reply: response.text || 'Ho elaborato la tua richiesta.'
+        reply: response.text || 'I have processed your request.'
       };
     } catch (err) {
       console.warn('Gemini API call error, using deterministic engine:', err);
@@ -1104,5 +1207,5 @@ Attualmente ci sono ${allItems.length} elementi (${allItems.filter(i => i.type =
   }
 
   // Deterministic fallback
-  return executeLocalIntents(userMessage, user);
+  return executeLocalIntents(userMessage, ctx);
 }
