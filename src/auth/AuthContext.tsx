@@ -25,7 +25,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me');
-      if (res.ok) setUser((await res.json()).user ?? null);
+      if (res.ok) {
+        const next: AuthUser | null = (await res.json()).user ?? null;
+        // Same user as before: keep the same object, so nothing downstream re-renders
+        setUser(prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+      }
     } catch (e) {
       console.error('Failed to read the session:', e);
     }
@@ -34,7 +38,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     refresh();
     // Picks up permission changes made by an admin, and expired sessions
-    const timer = setInterval(refresh, 30000);
+    const timer = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 60000);
     return () => clearInterval(timer);
   }, [refresh]);
 

@@ -10,6 +10,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useNodesInitialized,
   ReactFlowProvider,
 } from '@xyflow/react';
 import { Phase, Item, FilterState, Practice } from '../../types/index.ts';
@@ -63,10 +64,16 @@ interface ToolboxGraphProps {
   onAddIdea: (phaseId: string) => void;
   onAddNeed: (phaseId: string) => void;
   onUpdateItemPosition: (itemId: string, x: number, y: number) => void;
+  // Called when the nodes stay unmeasured (so invisible): the wrapper rebuilds the canvas
+  onStuck?: () => void;
+  // Called once every node is measured and visible
+  onHealthy?: () => void;
 }
 
 // Inner component so we can use `useReactFlow()`
 const GraphInner: React.FC<ToolboxGraphProps> = ({
+  onStuck,
+  onHealthy,
   readOnly,
   practices,
   practiceId,
@@ -478,11 +485,41 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Sync state when layout recalculates
+  // Sync state when layout recalculates. New node objects would lose the sizes React Flow already
+  // measured (and stay invisible until measured again), so the previous measurements are carried over.
   React.useEffect(() => {
-    setNodes(initialNodes);
+    setNodes(prev => {
+      const previous = new Map(prev.map(n => [n.id, n]));
+      return initialNodes.map(node => {
+        const old = previous.get(node.id);
+        return old?.measured ? { ...node, measured: old.measured } : node;
+      });
+    });
     setEdges(initialEdges);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  // Safety net: nodes that remain unmeasured are hidden by React Flow. If that lasts, rebuild the canvas.
+  const nodesInitialized = useNodesInitialized();
+  React.useEffect(() => {
+    if (nodesInitialized) {
+      onHealthy?.();
+      return;
+    }
+    if (nodes.length === 0 || !onStuck) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(timer);
+      // Background tabs do not measure anything: wait until the tab is visible again
+      if (document.hidden) return;
+      timer = setTimeout(onStuck, 1500);
+    };
+    arm();
+    document.addEventListener('visibilitychange', arm);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', arm);
+    };
+  }, [nodesInitialized, nodes.length, onStuck, onHealthy]);
 
   // Handle saving position after user drags an item (Spec 54)
   const onNodeDragStop = useCallback(
@@ -652,9 +689,21 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
 };
 
 export const ToolboxGraph: React.FC<ToolboxGraphProps> = (props) => {
+  // Changing the key rebuilds the whole canvas (see onStuck in GraphInner)
+  const [canvasKey, setCanvasKey] = React.useState(0);
+  // Counted here, not in GraphInner: it survives the rebuilds. Gives up after 3 tries in a row.
+  const rebuilds = React.useRef(0);
+  const rebuild = useCallback(() => {
+    if (rebuilds.current >= 3) return;
+    rebuilds.current += 1;
+    setCanvasKey(k => k + 1);
+  }, []);
+  const healthy = useCallback(() => {
+    rebuilds.current = 0;
+  }, []);
   return (
-    <ReactFlowProvider>
-      <GraphInner {...props} />
+    <ReactFlowProvider key={canvasKey}>
+      <GraphInner {...props} onStuck={rebuild} onHealthy={healthy} />
     </ReactFlowProvider>
   );
 };

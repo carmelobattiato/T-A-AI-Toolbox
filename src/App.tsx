@@ -22,12 +22,35 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const PRACTICE_STORAGE_KEY = 'adm.practice';
 
+// How often other people's changes are picked up. Own changes show up immediately.
+const POLL_INTERVAL_MS = Number(import.meta.env.VITE_POLL_INTERVAL_MS) || 60_000;
+// A reload that suddenly returns far less data is retried before it is believed
+const RETRY_DELAYS_MS = [1000, 2000, 4000];
+
+interface Snapshot {
+  phases: Phase[];
+  items: Item[];
+  tiles: DashboardTile[] | null;
+  phasesText: string;
+  itemsText: string;
+  tilesText: string | null;
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default function App() {
   const { user, isAdmin, canEdit, logout } = useAuth();
   const [practices, setPractices] = useState<Practice[]>([]);
   const [practiceId, setPracticeId] = useState<string>(() => localStorage.getItem(PRACTICE_STORAGE_KEY) || DEFAULT_PRACTICE_ID);
   // Latest practice selection, so a slow response for the previous practice never overwrites the map
   const practiceRef = useRef(practiceId);
+  // Raw text of the last data applied, so identical reloads do not touch the state (and the graph)
+  const appliedText = useRef({ phases: '', items: '', tiles: '', practices: '' });
+  // Newest reload wins: slower, older responses are dropped
+  const loadSeq = useRef(0);
+  // Size of what is on screen, to spot a response that would wipe the map
+  const shownCounts = useRef({ phases: 0, items: 0 });
+  const [connectionIssue, setConnectionIssue] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   // The ADM introduction is shown once per browser session, before everything else
   const [splashOpen, setSplashOpen] = useState(() => !sessionStorage.getItem(SPLASH_STORAGE_KEY));
@@ -96,8 +119,13 @@ export default function App() {
     try {
       const res = await fetch('/api/practices');
       if (!res.ok) return;
-      const list: Practice[] = await res.json();
-      setPractices(list);
+      const text = await res.text();
+      const list: Practice[] = JSON.parse(text);
+      if (!Array.isArray(list)) return;
+      if (text !== appliedText.current.practices) {
+        appliedText.current.practices = text;
+        setPractices(list);
+      }
       // The selected practice may have been deleted meanwhile
       if (list.length > 0 && !list.some(p => p.id === practiceRef.current)) {
         setPracticeId(list.find(p => p.id === DEFAULT_PRACTICE_ID)?.id ?? list[0].id);
@@ -112,6 +140,7 @@ export default function App() {
     localStorage.setItem(PRACTICE_STORAGE_KEY, id);
     setFocusedPhaseId(null);
     setFocusedItemId(null);
+    appliedText.current = { ...appliedText.current, phases: '', items: '', tiles: '' };
     setPhases([]);
     setItems([]);
     setTiles([]);
@@ -152,37 +181,124 @@ export default function App() {
     }
   }, []);
 
-  // Fetch all data from server
-  const loadData = useCallback(async (quiet = false) => {
-    const requested = practiceId;
+  // One request round for the map. 'notfound' = unknown practice, 'error' = network or server failure.
+  const fetchSnapshot = useCallback(async (requested: string): Promise<Snapshot | 'notfound' | 'error'> => {
     const query = `?practice=${encodeURIComponent(requested)}`;
-    if (!quiet) setIsLoading(true);
     try {
       const [phasesRes, itemsRes, tilesRes] = await Promise.all([
         fetch(`/api/phases${query}`),
         fetch(`/api/items${query}`),
         fetch(`/api/dashboard/tiles${query}`),
       ]);
+      if (phasesRes.status === 404) return 'notfound';
+      if (!phasesRes.ok || !itemsRes.ok) return 'error';
+      const phasesText = await phasesRes.text();
+      const itemsText = await itemsRes.text();
+      const tilesText = tilesRes.ok ? await tilesRes.text() : null;
+      const phases = JSON.parse(phasesText);
+      const items = JSON.parse(itemsText);
+      const tiles = tilesText === null ? null : JSON.parse(tilesText);
+      // Anything that is not the expected shape (e.g. an error page) is never shown
+      if (!Array.isArray(phases) || !Array.isArray(items) || (tiles !== null && !Array.isArray(tiles))) return 'error';
+      return { phases, items, tiles, phasesText, itemsText, tilesText };
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      return 'error';
+    }
+  }, []);
 
-      if (practiceRef.current !== requested) return;
-      if (phasesRes.status === 404) {
+  // True when the reload would empty the map or drop most of its content in one go
+  const looksLikeWipe = (snap: Snapshot): boolean => {
+    const shown = shownCounts.current;
+    if (shown.phases > 0 && snap.phases.length === 0) return true;
+    return shown.items >= 4 && snap.items.length < shown.items * 0.5;
+  };
+
+  // Puts a snapshot on screen, touching only the parts that really changed
+  const applySnapshot = (snap: Snapshot) => {
+    const applied = appliedText.current;
+    if (snap.phasesText !== applied.phases) {
+      applied.phases = snap.phasesText;
+      setPhases(snap.phases);
+    }
+    if (snap.itemsText !== applied.items) {
+      applied.items = snap.itemsText;
+      setItems(snap.items);
+    }
+    if (snap.tiles && snap.tilesText !== applied.tiles) {
+      applied.tiles = snap.tilesText ?? '';
+      setTiles(snap.tiles);
+    }
+    setConnectionIssue(false);
+  };
+
+  // Fetch all data from server
+  const loadData = useCallback(async (quiet = false) => {
+    const requested = practiceId;
+    const seq = ++loadSeq.current;
+    const isCurrent = () => seq === loadSeq.current && practiceRef.current === requested;
+    if (!quiet) setIsLoading(true);
+    try {
+      let snap = await fetchSnapshot(requested);
+      if (!isCurrent()) return;
+      if (snap === 'notfound') {
         // Unknown practice (e.g. deleted): the practice list decides where to go next
         await loadPractices();
         return;
       }
-      if (phasesRes.ok && itemsRes.ok) {
-        const phasesData = await phasesRes.json();
-        const itemsData = await itemsRes.json();
-        setPhases(phasesData);
-        setItems(itemsData);
-        if (tilesRes.ok) setTiles(await tilesRes.json());
+
+      // A failure, or a response that would wipe the map, is not trusted at once: ask again, a few times.
+      // A wipe is believed only after three identical answers in a row (a real mass deletion looks like that).
+      if (snap === 'error' || looksLikeWipe(snap)) {
+        let previous: Snapshot | 'error' = snap;
+        let identical = 1;
+        let trusted = false;
+        for (const delay of RETRY_DELAYS_MS) {
+          await sleep(delay);
+          if (!isCurrent()) return;
+          const again = await fetchSnapshot(requested);
+          if (!isCurrent()) return;
+          if (again === 'notfound') {
+            await loadPractices();
+            return;
+          }
+          if (again === 'error') {
+            previous = 'error';
+            identical = 0;
+            continue;
+          }
+          if (!looksLikeWipe(again)) {
+            snap = again;
+            trusted = true;
+            break;
+          }
+          identical = previous !== 'error' && again.phasesText === previous.phasesText && again.itemsText === previous.itemsText ? identical + 1 : 1;
+          previous = again;
+          if (identical >= 3) {
+            snap = again;
+            trusted = true;
+            break;
+          }
+        }
+        if (!trusted) snap = 'error';
       }
-    } catch (err) {
-      console.error('Failed to load data:', err);
+
+      if (snap === 'error') {
+        // Keep what is on screen; only warn when there is something to be stale about
+        if (shownCounts.current.phases > 0) setConnectionIssue(true);
+        return;
+      }
+      applySnapshot(snap);
     } finally {
       if (!quiet && practiceRef.current === requested) setIsLoading(false);
     }
-  }, [practiceId, loadPractices]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [practiceId, loadPractices, fetchSnapshot]);
+
+  // What is on screen right now (also after the user's own edits)
+  useEffect(() => {
+    shownCounts.current = { phases: phases.length, items: items.length };
+  }, [phases, items]);
 
   useEffect(() => {
     practiceRef.current = practiceId;
@@ -212,13 +328,20 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [splashOpen, isLoading, mustChangePassword]);
 
-  // Polling every 10 seconds for multi-user collaboration (Spec 43)
+  // Polling for multi-user collaboration: once a minute, and only while the tab is visible.
+  // Coming back to the tab refreshes at once.
   useEffect(() => {
-    const timer = setInterval(() => {
+    const tick = () => {
+      if (document.hidden) return;
       loadData(true);
       loadPractices();
-    }, 10000);
-    return () => clearInterval(timer);
+    };
+    const timer = setInterval(tick, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, [loadData, loadPractices]);
 
   // Selection handlers
@@ -717,6 +840,13 @@ export default function App() {
         onClose={() => setChangePasswordOpen(false)}
         onChanged={() => showToast('Password updated.')}
       />
+
+      {connectionIssue && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-amber-50 border border-amber-300 px-3.5 py-1.5 text-[11px] font-semibold text-amber-800 shadow-md">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          Unstable connection: showing the last known data
+        </div>
+      )}
 
       {/* Toast Feedback */}
       {toast && (

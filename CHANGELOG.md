@@ -4,7 +4,8 @@
 
 ---
 
-## [0.4] — 2026-10-21
+## [0.4] — 2026-10-22
+
 
 
 - **Rinomina** da "T&A AI Toolbox" a "ADM Project Blueprint" (interfaccia, assistente, script e documentazione). Nomi tecnici di container e manifest Kubernetes invariati.
@@ -19,6 +20,7 @@
 - **Esigenze aperte a tutti:** chiunque, anche senza login, può proporre un'esigenza (dal "+" sotto le fasi o dall'assistente). Tool, WiP, fasi e modifiche restano riservati. Le esigenze inviate senza accesso sono limitate a 20 l'ora per indirizzo e risultano create da `anonymous`.
 - **Splash screen** iniziale con la definizione di Accenture Delivery Methods (una volta per sessione del browser) e tooltip con lo stesso testo sul nome dell'applicazione nell'header. **Tour introduttivo** di 5 passi al primo accesso, con "Non mostrare più" e pulsante **?** per rivederlo.
 - **Icone scelte dall'utente.** Tool, WiP, esigenze e fasi hanno un selettore di icone (23 icone già usate nell'app) nei rispettivi form, con "Default" per tornare all'icona automatica basata sul titolo. Nuovo campo opzionale `icon` su elementi e fasi (chiave dell'icona, validata dal server: una chiave sconosciuta viene ignorata; `null` ripristina il Default). Le chiavi sono in `src/utils/iconKeys.ts`. I database esistenti non richiedono migrazioni. Gli elementi creati dall'assistente usano il Default.
+- **Correzione: il grafo si svuotava da solo.** A ogni aggiornamento automatico (ogni 10 s) la mappa rigenerava tutti i nodi anche con dati identici e per un istante li perdeva la misura, restando a volte invisibili (a volte solo i connettori). Ora: aggiornamento automatico **una volta al minuto** e solo a scheda visibile (al ritorno sulla scheda si aggiorna subito); lo stato cambia solo se i dati sono davvero cambiati; le misure dei nodi vengono conservate; le risposte superate vengono ignorate. Se un aggiornamento restituisce molto meno di quello a schermo (mappa vuota o meno della metà degli elementi) o fallisce, viene riprovato dopo 1, 2 e 4 secondi: un calo è creduto solo dopo tre risposte identiche, altrimenti resta l'ultimo dato valido con l'avviso "Unstable connection". Se i nodi restano non misurati più di 1,5 s il canvas viene ricostruito (massimo 3 tentativi). Anche il controllo della sessione ora è ogni 60 s e non rigenera l'utente se non cambia. `VITE_POLL_INTERVAL_MS` (in fase di build o di sviluppo) modifica l'intervallo, utile per i test.
 - Da sapere: backend sempre a 1 replica (sessioni stateless, ma blocco login e azioni in sospeso sono in memoria); eliminare una practice cancella tutta la sua mappa.
 
 ---
