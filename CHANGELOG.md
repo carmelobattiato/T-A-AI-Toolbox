@@ -4,6 +4,14 @@
 
 ---
 
+## [0.5] — 2026-10-23
+
+- **Autologin dal portale.** Se il portale passa il cookie `portal_session` (JWT RS256) e il claim `name` (altrimenti `preferred_username`/`email` senza dominio) corrisponde a un utente attivo, l'accesso è automatico, senza form. Controlli: `alg` solo RS256, `iss`, `aud` e `exp`. Gli utenti non vengono mai creati da qui. Il logout impedisce il rientro automatico per quella sessione del portale: un nuovo token del portale fa entrare di nuovo. Gli utenti entrati così non devono cambiare password. Variabili: `PORTAL_COOKIE_NAME`, `PORTAL_JWT_ISSUER` (default `portal-genai-auth`), `PORTAL_JWT_AUDIENCE` (default `portal-backend`), `PORTAL_JWT_PUBLIC_KEY` (PEM) oppure `PORTAL_JWKS_URL`. Senza chiave l'autologin è spento. `PORTAL_AUTOLOGIN_INSECURE=1` accetta i token senza verificare la firma ed espone `/api/auth/test-portal-cookie`: **solo per i test, da togliere/non impostare in produzione**.
+- **`test.sh`** simula il portale: crea un JWT di test con il nome indicato (`./test.sh nome.cognome [url]`, default `http://localhost:8091`), lo passa all'applicazione in esecuzione e apre la pagina già loggata. Richiede l'app avviata con `PORTAL_AUTOLOGIN_INSECURE=1`.
+- **Nessun cambio password obbligatorio al primo accesso** (né per admin, né per utenti creati dall'admin): il cambio resta disponibile dal menu utente. Vale anche per gli utenti già esistenti.
+
+---
+
 ## [0.4] — 2026-10-22
 
 

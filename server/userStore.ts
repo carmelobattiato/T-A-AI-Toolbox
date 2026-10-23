@@ -117,7 +117,7 @@ class UserStore {
           role: 'admin',
           practices: [],
           active: true,
-          mustChangePassword: true,
+          mustChangePassword: false,
           passwordHash: hashPassword(adminPassword),
           tokenVersion: 1,
           createdAt: new Date().toISOString(),
@@ -138,9 +138,12 @@ class UserStore {
   }
 
   // --- Sessions ---
-  signToken(user: AuthUser): string {
+  // sso: session created from the portal cookie; those users never have to change a password
+  signToken(user: AuthUser, sso = false): string {
     const stored = this.find(user.id)!;
-    const body = Buffer.from(JSON.stringify({ u: stored.id, v: stored.tokenVersion, exp: Date.now() + SESSION_TTL_MS })).toString('base64url');
+    const claims: Record<string, unknown> = { u: stored.id, v: stored.tokenVersion, exp: Date.now() + SESSION_TTL_MS };
+    if (sso) claims.s = 1;
+    const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
     const sig = crypto.createHmac('sha256', this.secret()).update(body).digest('base64url');
     return `${body}.${sig}`;
   }
@@ -158,10 +161,17 @@ class UserStore {
       if (typeof claims.exp !== 'number' || claims.exp < Date.now()) return null;
       const user = this.find(claims.u);
       if (!user || !user.active || user.tokenVersion !== claims.v) return null;
-      return publicUser(user);
+      return { ...publicUser(user), ...(claims.s === 1 ? { mustChangePassword: false } : {}) };
     } catch {
       return null;
     }
+  }
+
+  // Active user by username, ignoring case; never creates anybody
+  findActiveByUsername(username: string): AuthUser | null {
+    const name = username.trim().toLowerCase();
+    const user = this.file.users.find(u => u.username.toLowerCase() === name);
+    return user && user.active ? publicUser(user) : null;
   }
 
   verifyLogin(username: unknown, password: unknown): AuthUser | null {
@@ -210,7 +220,7 @@ class UserStore {
       practices: this.cleanPractices(input.practices, validPracticeIds),
       active: true,
       // Passwords set by an admin are temporary: the user picks their own at first login
-      mustChangePassword: true,
+      mustChangePassword: false,
       passwordHash: hashPassword(cleanPassword(input.password)),
       tokenVersion: 1,
       createdAt: now,
@@ -249,7 +259,7 @@ class UserStore {
     user.active = nextActive;
     if (input.password !== undefined && input.password !== '') {
       user.passwordHash = hashPassword(cleanPassword(input.password));
-      user.mustChangePassword = true;
+      user.mustChangePassword = false;
       user.tokenVersion += 1;
     }
     this.persist();

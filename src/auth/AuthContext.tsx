@@ -72,10 +72,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      isAdmin: user?.role === 'admin' && !user.mustChangePassword,
+      isAdmin: user?.role === 'admin',
       // The server refuses writes until a temporary password has been changed
       canEdit: practiceId =>
-        Boolean(user && !user.mustChangePassword && (user.role === 'admin' || user.practices.includes(practiceId))),
+        Boolean(user && (user.role === 'admin' || user.practices.includes(practiceId))),
       login,
       logout,
       changePassword,

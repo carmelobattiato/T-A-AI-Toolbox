@@ -113,7 +113,6 @@ export default function App() {
 
   const readOnly = !canEdit(practiceId);
   const currentPractice = practices.find(p => p.id === practiceId);
-  const mustChangePassword = Boolean(user?.mustChangePassword);
 
   const loadPractices = useCallback(async () => {
     try {
@@ -320,13 +319,13 @@ export default function App() {
 
   // First visit (decided by the browser's local storage): show the tour once the map is on screen
   useEffect(() => {
-    if (splashOpen || isLoading || mustChangePassword || tourAutoShown.current || localStorage.getItem(TOUR_STORAGE_KEY)) return;
+    if (splashOpen || isLoading || tourAutoShown.current || localStorage.getItem(TOUR_STORAGE_KEY)) return;
     const timer = setTimeout(() => {
       tourAutoShown.current = true;
       setTourOpen(true);
     }, 900);
     return () => clearTimeout(timer);
-  }, [splashOpen, isLoading, mustChangePassword]);
+  }, [splashOpen, isLoading]);
 
   // Polling for multi-user collaboration: once a minute, and only while the tab is visible.
   // Coming back to the tab refreshes at once.
@@ -835,8 +834,8 @@ export default function App() {
 
       {/* A temporary password (first admin login, or reset by an admin) must be replaced right away */}
       <ChangePasswordModal
-        isOpen={mustChangePassword || changePasswordOpen}
-        forced={mustChangePassword}
+        isOpen={changePasswordOpen}
+        forced={false}
         onClose={() => setChangePasswordOpen(false)}
         onChanged={() => showToast('Password updated.')}
       />

@@ -32,7 +32,6 @@ function practiceName(practiceId: string): string {
 // Message to show when the user may not write on the practice, or null when allowed
 function writeDenied(ctx: ChatContext, practiceId: string): string | null {
   if (!ctx.user) return 'To change data you need to sign in: use the "Sign in" button at the top right. Without signing in I can only browse the map.';
-  if (ctx.user.mustChangePassword) return 'Change your temporary password before editing data.';
   if (!canEdit(ctx.user, practiceId)) return `You do not have permission to edit the practice "${practiceName(practiceId)}".`;
   return null;
 }

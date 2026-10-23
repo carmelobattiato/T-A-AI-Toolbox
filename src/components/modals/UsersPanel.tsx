@@ -201,7 +201,6 @@ export const UsersPanel: React.FC = () => {
                   </span>
                 )}
                 {!u.active && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">disabled</span>}
-                {u.mustChangePassword && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">temporary password</span>}
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
                 {u.role === 'admin' ? 'All practices' : u.practices.length ? u.practices.map(practiceName).join(', ') : 'No practices: read-only'}

@@ -2,6 +2,7 @@ import { Express, NextFunction, Request, Response } from 'express';
 import { AuthUser } from '../src/types/index.ts';
 import { userStore, UserError, SESSION_TTL_MS } from './userStore.ts';
 import { internalError } from './http.ts';
+import { portalUsername, portalTokenFingerprint, PORTAL_OPT_OUT_COOKIE } from './portalAuth.ts';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -39,18 +40,32 @@ function isHttps(req: Request): boolean {
 function setSessionCookie(req: Request, res: Response, token: string) {
   const attrs = [`${COOKIE_NAME}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Strict', `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`];
   if (isHttps(req)) attrs.push('Secure');
-  res.setHeader('Set-Cookie', attrs.join('; '));
+  res.append('Set-Cookie', attrs.join('; '));
 }
 
 function clearSessionCookie(req: Request, res: Response) {
   const attrs = [`${COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
   if (isHttps(req)) attrs.push('Secure');
-  res.setHeader('Set-Cookie', attrs.join('; '));
+  res.append('Set-Cookie', attrs.join('; '));
 }
 
 // Resolves the session cookie to req.user on every request; anonymous requests simply have no user
-export function attachUser(req: Request, _res: Response, next: NextFunction) {
+// Local session first; without one, the portal cookie can sign the user in (unless they logged out)
+export async function attachUser(req: Request, res: Response, next: NextFunction) {
   req.user = userStore.userFromToken(readCookie(req, COOKIE_NAME)) ?? undefined;
+  const fingerprint = portalTokenFingerprint(req);
+  if (!req.user && fingerprint && readCookie(req, PORTAL_OPT_OUT_COOKIE) !== fingerprint) {
+    try {
+      const username = await portalUsername(req);
+      const user = username ? userStore.findActiveByUsername(username) : null;
+      if (user) {
+        req.user = user;
+        setSessionCookie(req, res, userStore.signToken(user, true));
+      }
+    } catch (err) {
+      console.error('Portal autologin failed:', err);
+    }
+  }
   next();
 }
 
@@ -58,10 +73,6 @@ export function attachUser(req: Request, _res: Response, next: NextFunction) {
 export function authorizeEdit(req: Request, res: Response, practiceId: string): boolean {
   if (!req.user) {
     res.status(401).json({ error: 'Sign in to edit data' });
-    return false;
-  }
-  if (req.user.mustChangePassword) {
-    res.status(403).json({ error: 'Change your temporary password before continuing' });
     return false;
   }
   if (!canEdit(req.user, practiceId)) {
@@ -105,10 +116,6 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
   if (req.user.role !== 'admin') {
     res.status(403).json({ error: 'This operation is restricted to administrators' });
-    return;
-  }
-  if (req.user.mustChangePassword) {
-    res.status(403).json({ error: 'Change your temporary password before continuing' });
     return;
   }
   next();
@@ -162,6 +169,8 @@ export function registerAuthRoutes(app: Express) {
         return;
       }
       failures.delete(userKey);
+      // A manual login clears the logout opt-out, so the portal cookie works again next time
+      res.append('Set-Cookie', `${PORTAL_OPT_OUT_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
       setSessionCookie(req, res, userStore.signToken(user));
       res.json({ user });
     } catch (err) {
@@ -169,8 +178,32 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
+  // TEST ONLY (needs PORTAL_AUTOLOGIN_INSECURE=1, otherwise 404): lets ./test.sh give the browser the portal cookie
+  // by just opening a URL, since a script cannot set cookies in the browser by itself. Remove together with the flag.
+  app.get('/api/auth/test-portal-cookie', (req: Request, res: Response) => {
+    if (process.env.PORTAL_AUTOLOGIN_INSECURE !== '1') {
+      res.status(404).end();
+      return;
+    }
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.test(token) || token.length > 4096) {
+      res.status(400).json({ error: 'Invalid token' });
+      return;
+    }
+    const cookieName = process.env.PORTAL_COOKIE_NAME || 'portal_session';
+    res.append('Set-Cookie', `${cookieName}=${token}; Path=/; SameSite=Lax`);
+    // Start clean: no previous local session, no logout block
+    res.append('Set-Cookie', `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+    res.append('Set-Cookie', `${PORTAL_OPT_OUT_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+    res.redirect('/');
+  });
+
   app.post('/api/auth/logout', (req: Request, res: Response) => {
     clearSessionCookie(req, res);
+    // Without this, the portal cookie would sign the user straight back in. It is tied to that portal
+    // session: a new portal login (new token) signs in again. Session-only cookie.
+    const fingerprint = portalTokenFingerprint(req);
+    if (fingerprint) res.append('Set-Cookie', `${PORTAL_OPT_OUT_COOKIE}=${fingerprint}; Path=/; HttpOnly; SameSite=Strict`);
     res.json({ success: true });
   });
 
