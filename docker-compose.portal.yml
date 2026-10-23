@@ -1,0 +1,25 @@
+# Override per far girare il toolbox dietro l'Envoy locale del portale.
+# Il frontend entra nella rete `portal-genai` (creata dallo stack del portale), così Envoy
+# lo raggiunge come `ta-toolbox-frontend:8080` (cluster `taai_toolbox` in envoy/local/envoy.yaml).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.portal.yml up -d --build
+#
+# Richiede che la rete `portal-genai` esista (stack del portale già avviato).
+
+services:
+  frontend:
+    networks:
+      default: {}
+      portal-genai: {}
+
+  backend:
+    # JWKS dell'auth del portale in locale: pubblicato su localhost:8001 dell'host
+    environment:
+      - PORTAL_JWKS_URL=http://host.docker.internal:8001/.well-known/jwks.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  portal-genai:
+    external: true
+    name: portal-genai

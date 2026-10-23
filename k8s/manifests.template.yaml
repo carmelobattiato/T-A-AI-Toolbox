@@ -168,6 +168,25 @@ spec:
               value: "5000"
             - name: DATA_DIR
               value: /app/data
+            # Autologin dal portale: il backend scarica il JWKS dell'auth del portale per verificare
+            # il cookie portal_session. URL interno al cluster (valido solo se il portale è nello stesso
+            # cluster GKE). Non impostare PORTAL_AUTOLOGIN_INSECURE in produzione.
+            - name: PORTAL_JWKS_URL
+              value: http://<HOST_AUTH_INTERNO>:8001/.well-known/jwks.json
+            # Autologin, facoltative: i default corrispondono al portale (cookie portal_session, issuer
+            # portal-genai-auth, audience portal-backend). Impostarli solo se il portale usa valori diversi.
+            # - name: PORTAL_COOKIE_NAME
+            #   value: portal_session
+            # - name: PORTAL_JWT_ISSUER
+            #   value: portal-genai-auth
+            # - name: PORTAL_JWT_AUDIENCE
+            #   value: portal-backend
+            # In alternativa a PORTAL_JWKS_URL, la chiave pubblica PEM (valore in un Secret, non in chiaro):
+            # - name: PORTAL_JWT_PUBLIC_KEY
+            #   valueFrom: { secretKeyRef: { name: <SECRET_PORTAL_KEY>, key: public.pem } }
+            # Solo per test locali, MAI in produzione (accetta token senza verificare la firma):
+            # - name: PORTAL_AUTOLOGIN_INSECURE
+            #   value: "1"
             # Facoltative (vedi DEPLOYMENT.md, "Variabili di sicurezza"), solo da v1.0.2:
             # ammette come endpoint LLM solo l'host indicato (confronto sul solo hostname)
             # - name: ALLOWED_LLM_HOSTS
