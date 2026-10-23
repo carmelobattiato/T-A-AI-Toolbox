@@ -6,7 +6,7 @@ import { userStore } from './userStore.ts';
 import { handleAssistantChat } from './assistant.ts';
 import { authorizeCreate, authorizeEdit, registerAuthRoutes, requireAdmin, sendError } from './auth.ts';
 import { getUser, internalError } from './http.ts';
-import { buildDataExport, exportFileName } from './exportData.ts';
+import { buildDataExport, exportFileName, importDataFiles, ImportError } from './exportData.ts';
 
 // Practice selected by a read request; older clients send nothing and get the default map
 function practiceFromQuery(req: Request, res: Response): string | null {
@@ -76,6 +76,27 @@ export function registerApiRoutes(app: Express) {
       res.setHeader('Cache-Control', 'no-store');
       res.send(zip);
     } catch (err) {
+      internalError(res, err);
+    }
+  });
+
+  // --- Data import (admin only): JSON files into the data folder; replacing an existing file needs confirmation ---
+  app.post('/api/admin/import', requireAdmin, (req: Request, res: Response) => {
+    try {
+      const overwrite = Array.isArray(req.body?.overwrite) ? req.body.overwrite.filter((n: unknown) => typeof n === 'string') : [];
+      const result = importDataFiles(req.body?.files, overwrite);
+      // The stores keep their data in memory and would write it back over the new files: re-read what changed
+      const changed = result.written.map(n => n.toLowerCase());
+      if (changed.includes('db.json') || changed.includes('log.json')) db.reload();
+      if (changed.includes('users.json')) userStore.reload();
+      if (changed.includes('settings.json')) settingsStore.reload();
+      console.log(`Data import by ${getUser(req)}: ${result.written.join(', ')} (replaced: ${result.replaced.join(', ') || 'none'})`);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ImportError) {
+        res.status(err.status).json({ error: err.message, ...(err.existing ? { existing: err.existing } : {}) });
+        return;
+      }
       internalError(res, err);
     }
   });

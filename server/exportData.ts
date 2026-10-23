@@ -106,3 +106,98 @@ export function buildDataExport(): { zip: Buffer; files: string[] } {
   });
   return { zip: buildZip(entries), files: names };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Import: upload JSON files into the data folder (admin only, see routes.ts)
+// ---------------------------------------------------------------------------------------------
+
+export interface ImportFile {
+  name: string;
+  content: string;
+}
+
+export class ImportError extends Error {
+  status: number;
+  existing?: string[];
+  constructor(message: string, status = 400, existing?: string[]) {
+    super(message);
+    this.status = status;
+    this.existing = existing;
+  }
+}
+
+const MAX_IMPORT_CHARS = 9_000_000;
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.json$/i;
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+// Known files must have the right shape: a wrong users.json could lock everybody out, a wrong db.json empty the maps
+function validateKnownFile(name: string, parsed: unknown) {
+  switch (name.toLowerCase()) {
+    case 'db.json':
+      if (!isObject(parsed) || !Array.isArray(parsed.phases) || !Array.isArray(parsed.items)) {
+        throw new ImportError('db.json must be an object with "phases" and "items" lists');
+      }
+      break;
+    case 'users.json': {
+      if (!isObject(parsed) || typeof parsed.secret !== 'string' || !Array.isArray(parsed.users)) {
+        throw new ImportError('users.json must be an object with "secret" and a "users" list');
+      }
+      const users = parsed.users as any[];
+      if (!users.every(u => isObject(u) && typeof u.username === 'string' && typeof u.passwordHash === 'string')) {
+        throw new ImportError('users.json: every user needs "username" and "passwordHash"');
+      }
+      if (!users.some(u => u.role === 'admin' && u.active !== false)) {
+        throw new ImportError('users.json must contain at least one active admin, otherwise nobody could sign in as admin');
+      }
+      break;
+    }
+    case 'log.json':
+      if (!Array.isArray(parsed)) throw new ImportError('log.json must be a list');
+      break;
+    case 'settings.json':
+      if (!isObject(parsed)) throw new ImportError('settings.json must be an object');
+      break;
+  }
+}
+
+// Validates every file first, so a bad one means nothing is written. Files that already exist are replaced
+// only if their name is in `overwrite`; otherwise a 409 lists them so the user can confirm.
+export function importDataFiles(files: ImportFile[], overwrite: string[]): { written: string[]; replaced: string[] } {
+  if (!Array.isArray(files) || files.length === 0) throw new ImportError('No files received');
+  if (files.length > 20) throw new ImportError('Too many files (maximum 20)');
+
+  const seen = new Set<string>();
+  for (const f of files) {
+    if (!f || typeof f.name !== 'string' || typeof f.content !== 'string') throw new ImportError('Invalid file entry');
+    if (!SAFE_NAME.test(f.name) || f.name.includes('..')) throw new ImportError(`Invalid file name: ${f.name}`);
+    if (seen.has(f.name.toLowerCase())) throw new ImportError(`Duplicate file: ${f.name}`);
+    seen.add(f.name.toLowerCase());
+    if (f.content.length > MAX_IMPORT_CHARS) throw new ImportError(`${f.name} is too large (maximum ~9 MB)`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(f.content);
+    } catch {
+      throw new ImportError(`${f.name} is not valid JSON`);
+    }
+    validateKnownFile(f.name, parsed);
+  }
+
+  const existing = files.map(f => f.name).filter(name => fs.existsSync(path.join(DATA_DIR, name)));
+  const unconfirmed = existing.filter(name => !overwrite.includes(name));
+  if (unconfirmed.length > 0) {
+    throw new ImportError('Some files already exist and need confirmation to be replaced', 409, unconfirmed);
+  }
+
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  for (const f of files) {
+    const target = path.join(DATA_DIR, f.name);
+    // Safety copy of what is replaced (not a .json, so exports skip it)
+    if (fs.existsSync(target)) fs.copyFileSync(target, `${target}.replaced-${stamp}`);
+    // Atomic write, owner-only: these files can hold password hashes and API keys
+    const tmp = `${target}.tmp`;
+    fs.writeFileSync(tmp, f.content, { encoding: 'utf-8', mode: 0o600 });
+    fs.renameSync(tmp, target);
+  }
+  return { written: files.map(f => f.name), replaced: existing };
+}

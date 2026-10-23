@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Item, Phase } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
-import { getOwnerInitials } from '../../utils/owner.ts';
 
 interface IdeaNodeData {
   item: Item;
@@ -72,14 +71,16 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
           WiP
         </span>
 
-        {/* Owner Avatar / Badge (same as ToolNode) */}
+        {/* Priority badge (only when set) */}
         <div className="absolute bottom-1 right-2 flex items-center">
-          <div
-            title={`Proposer: ${item.owner || 'Not specified'}`}
-            className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
-          >
-            {getOwnerInitials(item.owner)}
-          </div>
+          {item.priority != null && (
+            <div
+              title={`Priority ${item.priority} (1 = highest)`}
+              className="h-4 min-w-4 px-1 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs whitespace-nowrap"
+            >
+              P-{item.priority}
+            </div>
+          )}
         </div>
       </div>
 

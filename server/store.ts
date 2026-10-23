@@ -387,6 +387,12 @@ class DatabaseStore {
     this.auditLogs = this.loadAuditLogs();
   }
 
+  // Re-reads db.json and log.json after the files were replaced on disk (data import)
+  reload() {
+    this.data = this.loadData();
+    this.auditLogs = this.loadAuditLogs();
+  }
+
   private writeAuditLogs(logs: AuditLog[]): boolean {
     try {
       if (!fs.existsSync(DATA_DIR)) {

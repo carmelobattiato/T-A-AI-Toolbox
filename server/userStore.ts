@@ -75,6 +75,11 @@ class UserStore {
     this.file = this.load();
   }
 
+  // Re-reads users.json after the file was replaced on disk (data import)
+  reload() {
+    this.file = this.load();
+  }
+
   private write(data: UsersFile) {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     // Atomic write with owner-only permissions: the file holds password hashes and the signing secret

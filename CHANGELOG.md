@@ -4,6 +4,16 @@
 
 ---
 
+## [0.7] — 2026-10-23
+
+- **Assistente: gli stessi diritti dell'utente.** Il modello AI ora sa cosa può fare chi gli scrive: senza login, o senza diritti sulla practice, può consultare e registrare **esigenze** (come il "+" sotto le fasi, sempre con la card di conferma), ma non creare tool, WiP, fasi o tile né modificare o eliminare; con i diritti sulla practice può fare tutto. Prima, per un utente non loggato il testo di sistema diceva "può solo consultare" e il chatbot rifiutava anche le esigenze. Il controllo vero resta sul server: i permessi sono verificati a ogni scrittura, anche in conferma.
+- **Import dei dati (solo admin).** Il tab diventa "Export / import data": oltre al download, si possono caricare uno o più file `.json` nella cartella `data/` (`POST /api/admin/import`). Se un file esiste già viene chiesta conferma di sostituzione, e di ogni file sostituito resta una copia `nome.json.replaced-<data>` nella cartella (non è un `.json`, quindi l'export la ignora). Prima di scrivere tutto viene validato: nomi sicuri (niente percorsi), JSON valido, forma corretta per `db.json`, `users.json`, `log.json`, `settings.json`; un `users.json` senza almeno un admin attivo viene rifiutato. Dopo l'import `db.json`, `log.json`, `users.json` e `settings.json` vengono riletti in memoria, così il server non li sovrascrive con i dati vecchi. Caricare `users.json` o `settings.json` può invalidare le sessioni aperte: la pagina si ricarica da sola.
+- **Mappa:** rimossa la finestra "Overview" (miniatura in basso a sinistra). Restano i controlli di zoom.
+- **Etichette dei livelli della mappa** (Tools & WiP, Process Phases, Needs): più larghe del 30% verso sinistra; il menu delle practice di Process Phases ora è davvero cliccabile (prima il mouse veniva ignorato); il nome della practice è un pulsante largo quanto l'etichetta e apre lo stesso menu; il conteggio (es. "10 phases") sta sempre a destra del titolo.
+- **Bolle dei tool:** rimosso il chip `+N` con il numero di fasi coperte; le connessioni restano visibili dai collegamenti sulla mappa e nel pannello dettagli.
+- **Bolle della mappa:** il pallino nero con le iniziali dell'owner è sostituito da un pallino con la priorità (`P-1`, `P-2`…), mostrato solo se la priorità è impostata (WiP ed esigenze; i tool non hanno priorità). L'owner resta nel pannello dettagli e nel tooltip.
+---
+
 ## [0.6] — 2026-10-23
 
 - **Export dei dati (solo admin).** Nuovo tab "Export data" nelle impostazioni: scarica uno zip `ADMPB_DATA_aaaammgg.zip` con tutti i file `.json` della cartella `data/`, interi e così come sono salvati (mappa, registro modifiche, utenti, impostazioni). Contiene hash delle password e chiavi API: da custodire con cura. Endpoint `GET /api/admin/export` (401 senza login, 403 per chi non è admin); nessuna libreria aggiunta. Ogni export è scritto nel log del server con l'utente che l'ha richiesto.

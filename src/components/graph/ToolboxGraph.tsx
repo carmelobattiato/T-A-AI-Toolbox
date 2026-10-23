@@ -2,7 +2,6 @@ import React, { useMemo, useCallback } from 'react';
 import { matchesAge, matchesTagQuery } from '../../utils/filters.ts';
 import {
   ReactFlow,
-  MiniMap,
   Background,
   BackgroundVariant,
   Node,
@@ -25,9 +24,6 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  ChevronDown,
-  ChevronUp,
-  Compass,
 } from 'lucide-react';
 
 const nodeTypes = {
@@ -96,7 +92,6 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   onUpdateItemPosition,
 }) => {
   const { zoomIn, zoomOut, setViewport, fitView } = useReactFlow();
-  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = React.useState(true);
 
   // Selected item reference if any
   const focusedItem = useMemo(
@@ -127,7 +122,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     nodes.push({
       id: 'category-label-tool-idea',
       type: 'categoryLabel',
-      position: { x: -200, y: 110 },
+      position: { x: -263, y: 110 },
       data: {
         category: 'TOOL_IDEA',
         title: 'Tools & WiP',
@@ -141,7 +136,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     nodes.push({
       id: 'category-label-phase',
       type: 'categoryLabel',
-      position: { x: -200, y: 366 },
+      position: { x: -263, y: 366 },
       data: {
         category: 'PHASE',
         title: 'Process Phases',
@@ -153,8 +148,10 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
         onSelectPractice,
         onCreatePractice,
       },
-      // Above the other nodes so the practice menu is never covered
+      // Above the other nodes so the practice menu is never covered. Label nodes are neither selectable
+      // nor draggable, so React Flow would make them ignore the mouse: the menu needs it.
       zIndex: 20,
+      style: { pointerEvents: 'all' },
       draggable: false,
       selectable: false,
     });
@@ -162,7 +159,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     nodes.push({
       id: 'category-label-need',
       type: 'categoryLabel',
-      position: { x: -200, y: 640 },
+      position: { x: -263, y: 640 },
       data: {
         category: 'NEED',
         title: 'Needs',
@@ -561,73 +558,6 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
       >
         {/* Subtle grid dots background */}
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} color="#E2E8F0" />
-
-        {/* Overview Integrated Card in bottom-left corner */}
-        <div className="absolute bottom-5 left-6 z-20 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/90 pointer-events-auto overflow-hidden transition-all duration-300">
-          <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50/90 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Compass className="w-3.5 h-3.5 text-purple-600" />
-              <span className="text-[11px] font-bold tracking-wider text-slate-800 uppercase">
-                Overview
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsMiniMapCollapsed(!isMiniMapCollapsed)}
-              className="p-1 hover:text-slate-900 text-slate-400 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer"
-              title={isMiniMapCollapsed ? 'Expand Overview' : 'Collapse Overview'}
-            >
-              {isMiniMapCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-
-          {!isMiniMapCollapsed ? (
-            <div className="p-2 bg-slate-50/40">
-              <MiniMap
-                zoomable
-                pannable
-                style={{
-                  width: 200,
-                  height: 110,
-                  background: '#FAFBFD',
-                  margin: 0,
-                  borderRadius: '10px',
-                  border: '1px solid #E2E8F0',
-                }}
-                maskColor="rgba(161, 0, 255, 0.08)"
-                maskStrokeColor="#7928CA"
-                maskStrokeWidth={1.5}
-                nodeBorderRadius={6}
-                nodeColor={(n) => {
-                  if (n.type === 'phase') return '#3B82F6';
-                  if (n.type === 'tool') return '#2563EB';
-                  if (n.type === 'idea') return '#9333EA';
-                  if (n.type === 'need') return '#16A34A';
-                  return 'transparent';
-                }}
-              />
-              {/* Integrated mini legend */}
-              <div className="flex items-center justify-around px-1 pt-2 pb-0.5 text-[9px] text-slate-500 font-semibold border-t border-slate-100/80 mt-1.5">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-600" /> Tool
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-purple-600" /> WiP
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600" /> Needs
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div
-              onClick={() => setIsMiniMapCollapsed(false)}
-              className="px-3.5 py-1.5 text-[10px] text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1.5 hover:bg-slate-50 transition-colors"
-            >
-              <span className="text-[10px] font-medium">Show map</span>
-            </div>
-          )}
-        </div>
 
         {/* Zoom & Fullscreen Controls in bottom-right (Spec 47) - Clear separation from drawers and assistant */}
         <div

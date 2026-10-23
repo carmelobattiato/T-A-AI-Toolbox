@@ -50,7 +50,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'ai', label: 'AI engine' },
   { id: 'users', label: 'Users & roles' },
   { id: 'practices', label: 'Practice' },
-  { id: 'export', label: 'Export data' },
+  { id: 'export', label: 'Export / import data' },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({

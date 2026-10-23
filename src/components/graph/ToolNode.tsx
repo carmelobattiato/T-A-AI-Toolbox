@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Item, Phase } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
-import { getOwnerInitials } from '../../utils/owner.ts';
 
 interface ToolNodeData {
   item: Item;
@@ -18,7 +17,6 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const coveredPhases = phases.filter(p => item.phaseIds.includes(p.id));
-  const ownerInitials = getOwnerInitials(item.owner);
 
   return (
     <div
@@ -76,21 +74,15 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
           </span>
         )}
 
-        {/* Owner Avatar / Badge */}
+        {/* Priority badge (only when set) */}
         <div className="absolute bottom-1 right-2 flex items-center">
-          <div
-            title={`Owner: ${item.owner || 'Not specified'}`}
-            className="w-4 h-4 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs"
-          >
-            {ownerInitials}
-          </div>
-          {item.phaseIds.length > 1 && (
-            <span
-              title={`Covers ${item.phaseIds.length} phases`}
-              className="ml-0.5 text-[8px] font-bold text-blue-600 bg-blue-50 rounded-full px-1 border border-blue-200"
+          {item.priority != null && (
+            <div
+              title={`Priority ${item.priority} (1 = highest)`}
+              className="h-4 min-w-4 px-1 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs whitespace-nowrap"
             >
-              +{item.phaseIds.length}
-            </span>
+              P-{item.priority}
+            </div>
           )}
         </div>
       </div>

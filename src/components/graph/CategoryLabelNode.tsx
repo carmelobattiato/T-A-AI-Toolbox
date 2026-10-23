@@ -63,7 +63,7 @@ export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data 
 
       {/* Main card */}
       <div
-        className={`w-[210px] bg-white/95 backdrop-blur-md px-3.5 py-3 rounded-xl border border-slate-200/90 border-l-[5px] ${config.borderAccent} shadow-md transition-all duration-300`}
+        className={`w-[273px] bg-white/95 backdrop-blur-md px-3.5 py-3 rounded-xl border border-slate-200/90 border-l-[5px] ${config.borderAccent} shadow-md transition-all duration-300`}
         style={{
           boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)',
         }}
@@ -89,7 +89,7 @@ export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data 
               </div>
             )}
           </div>
-          {countLabel && !hasSwitcher && (
+          {countLabel && (
             <span
               className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${config.badgeBg}`}
             >
@@ -98,16 +98,15 @@ export const CategoryLabelNode: React.FC<{ data: CategoryLabelData }> = ({ data 
           )}
         </div>
         {hasSwitcher && activePractice && (
-          <div className="mb-1 flex items-center gap-1.5">
-            <span className="inline-flex max-w-[110px] items-center truncate rounded-md bg-purple-600 px-2 py-0.5 text-[10px] font-bold text-white">
-              {activePractice.name}
-            </span>
-            {countLabel && (
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${config.badgeBg}`}>
-                {countLabel}
-              </span>
-            )}
-          </div>
+          // Current practice, as wide as the card; also opens the practice list
+          <button
+            type="button"
+            onClick={() => setMenuOpen(open => !open)}
+            title="Switch practice"
+            className="nodrag nopan mb-1.5 flex w-full items-center justify-center gap-1.5 truncate rounded-md bg-purple-600 px-2 py-1 text-[11px] font-bold text-white transition-colors hover:bg-purple-700 cursor-pointer"
+          >
+            <span className="truncate">{activePractice.name}</span>
+          </button>
         )}
         <p className="text-[10px] text-slate-500 leading-snug pl-0.5">
           {subtitle}

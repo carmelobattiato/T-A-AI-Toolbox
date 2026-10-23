@@ -70,6 +70,11 @@ class SettingsStore {
     this.settings = this.load();
   }
 
+  // Re-reads settings.json after the file was replaced on disk (data import)
+  reload() {
+    this.settings = this.load();
+  }
+
   private ensureDir() {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });

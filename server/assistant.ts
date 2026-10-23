@@ -31,9 +31,21 @@ function practiceName(practiceId: string): string {
 
 // Message to show when the user may not write on the practice, or null when allowed
 function writeDenied(ctx: ChatContext, practiceId: string): string | null {
-  if (!ctx.user) return 'To change data you need to sign in: use the "Sign in" button at the top right. Without signing in I can only browse the map.';
+  if (!ctx.user) return 'To create tools, WiPs or phases, or to edit and delete anything, you need to sign in with the "Sign in" button at the top right. Without signing in I can browse the map and register new needs.';
   if (!canEdit(ctx.user, practiceId)) return `You do not have permission to edit the practice "${practiceName(practiceId)}".`;
   return null;
+}
+
+// What the current user may do, spelled out for the model: the assistant has exactly the rights of the user
+function permissionNote(ctx: ChatContext): string {
+  if (ctx.user && canEdit(ctx.user, ctx.practiceId)) {
+    return `The user "${ctx.user.username}" is signed in and may edit this practice: you may create, edit and delete everything here (still with the confirmation card).\n`;
+  }
+  const why = ctx.user
+    ? `The user "${ctx.user.username}" is signed in but has no edit rights on this practice`
+    : 'The user is not signed in';
+  const fix = ctx.user ? 'they need a user with edit rights on this practice' : 'they must sign in with the "Sign in" button';
+  return `${why}. They CAN: browse and search, and create needs (create_need, with the confirmation card), exactly like the "+" under a phase. They CANNOT: create tools, WiPs, phases or dashboard tiles, or edit or delete anything: for those, tell them ${fix}; the write functions will return an error.\n`;
 }
 
 // The phase the user asked for, else the preferred one when it exists in the practice, else the first
@@ -995,7 +1007,7 @@ export async function handleAssistantChat(
 
   const systemInstruction = `You are the expert assistant of ADM Project Blueprint for Accenture.
 The application has a map for each practice; you are working on the practice "${practiceName(ctx.practiceId)}": its process is a sequence of central chevron blocks (phases) with bubbles above (Tools and WiP) and bubbles below (Needs). Everything you see and create concerns this practice only.
-${ctx.user ? '' : "The user is not signed in: they can only browse the map. If they ask to create, edit or delete something, tell them they must sign in with the \"Sign in\" button; the write functions will return an error.\n"}
+${permissionNote(ctx)}
 You have access to system functions to search items, look up phases, create tools, WiP items, needs and phases, and edit or delete items.
 To create, edit or delete anything you MUST call the corresponding function: never claim to have performed an operation without calling it.
 Edits and deletions are not immediate: the system shows the user a confirmation card. In that case tell the user to confirm from the card, not that the operation is complete.
@@ -1133,7 +1145,7 @@ ${allItems.map(i => `- [${i.type}] "${i.title}" (ID: ${i.id}, Phases: ${i.phaseI
       const allItems = db.getItems({ practiceId: ctx.practiceId });
       const systemInstruction = `You are the expert assistant of ADM Project Blueprint for Accenture.
 The application has a map for each practice; you are working on the practice "${practiceName(ctx.practiceId)}": its process is a sequence of central chevron blocks (phases) with bubbles above (Tools and WiP) and bubbles below (Needs). Everything you see and create concerns this practice only.
-${ctx.user ? '' : "The user is not signed in: they can only browse the map. If they ask to create, edit or delete something, tell them they must sign in with the \"Sign in\" button; the write functions will return an error.\n"}
+${permissionNote(ctx)}
 You have access to system functions to search items, look up phases, and create, edit and delete tools, WiP items and needs.
 To configure a dashboard tile (numbered from 1 to ${DASHBOARD_SLOTS}) IMMEDIATELY use create_dashboard_tile with the slot given by the user, translating the request into a query and a visualization type (bar, number, list); confirmation is a card shown by the system.
 When the user asks to delete or edit an item, USE delete_item or update_item. For deletion, ALWAYS ask the user for confirmation before permanently deleting.
