@@ -4,6 +4,11 @@
 
 ---
 
+## [0.8] — 2026-10-23
+
+- **Autologin: niente più cookie `adm_no_autologin`.** Non viene più creato (né al logout né altrove) e non influisce più sull'accesso; al logout e al login di prova viene solo cancellato dai browser che lo avevano. Conseguenza: se il cookie del portale è ancora valido, dopo "Sign out" l'accesso automatico si riattiva al successivo caricamento della pagina o al controllo della sessione (ogni minuto).
+---
+
 ## [0.7] — 2026-10-23
 
 - **Assistente: gli stessi diritti dell'utente.** Il modello AI ora sa cosa può fare chi gli scrive: senza login, o senza diritti sulla practice, può consultare e registrare **esigenze** (come il "+" sotto le fasi, sempre con la card di conferma), ma non creare tool, WiP, fasi o tile né modificare o eliminare; con i diritti sulla practice può fare tutto. Prima, per un utente non loggato il testo di sistema diceva "può solo consultare" e il chatbot rifiutava anche le esigenze. Il controllo vero resta sul server: i permessi sono verificati a ogni scrittura, anche in conferma.

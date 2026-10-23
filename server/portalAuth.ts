@@ -9,7 +9,9 @@ const DEFAULT_ISSUER = 'portal-genai-auth';
 const DEFAULT_AUDIENCE = 'portal-backend';
 const JWKS_TTL_MS = 10 * 60 * 1000;
 
-export const PORTAL_OPT_OUT_COOKIE = 'adm_no_autologin';
+// Cookie of an earlier version (it blocked the autologin after a logout). It is never set any more;
+// the name is kept only to delete it from browsers that still have it.
+export const LEGACY_OPT_OUT_COOKIE = 'adm_no_autologin';
 
 interface JwtClaims {
   name?: unknown;
@@ -67,13 +69,6 @@ function readCookie(req: Request, name: string): string | undefined {
     if (idx !== -1 && part.slice(0, idx).trim() === name) return decodeURIComponent(part.slice(idx + 1).trim());
   }
   return undefined;
-}
-
-// Short fingerprint of the portal cookie currently sent (null if none). A logout is remembered against it,
-// so the same portal session does not sign the user straight back in, but a new portal login does.
-export function portalTokenFingerprint(req: Request): string | null {
-  const token = readCookie(req, process.env.PORTAL_COOKIE_NAME || DEFAULT_COOKIE);
-  return token ? crypto.createHash('sha256').update(token).digest('hex').slice(0, 16) : null;
 }
 
 // The local username the portal cookie points to, or null (no cookie, invalid token, unknown user).

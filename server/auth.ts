@@ -2,7 +2,7 @@ import { Express, NextFunction, Request, Response } from 'express';
 import { AuthUser } from '../src/types/index.ts';
 import { userStore, UserError, SESSION_TTL_MS } from './userStore.ts';
 import { internalError } from './http.ts';
-import { portalUsername, portalTokenFingerprint, PORTAL_OPT_OUT_COOKIE } from './portalAuth.ts';
+import { portalUsername, LEGACY_OPT_OUT_COOKIE } from './portalAuth.ts';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -53,8 +53,7 @@ function clearSessionCookie(req: Request, res: Response) {
 // Local session first; without one, the portal cookie can sign the user in (unless they logged out)
 export async function attachUser(req: Request, res: Response, next: NextFunction) {
   req.user = userStore.userFromToken(readCookie(req, COOKIE_NAME)) ?? undefined;
-  const fingerprint = portalTokenFingerprint(req);
-  if (!req.user && fingerprint && readCookie(req, PORTAL_OPT_OUT_COOKIE) !== fingerprint) {
+  if (!req.user) {
     try {
       const username = await portalUsername(req);
       const user = username ? userStore.findActiveByUsername(username) : null;
@@ -169,8 +168,6 @@ export function registerAuthRoutes(app: Express) {
         return;
       }
       failures.delete(userKey);
-      // A manual login clears the logout opt-out, so the portal cookie works again next time
-      res.append('Set-Cookie', `${PORTAL_OPT_OUT_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
       setSessionCookie(req, res, userStore.signToken(user));
       res.json({ user });
     } catch (err) {
@@ -192,18 +189,15 @@ export function registerAuthRoutes(app: Express) {
     }
     const cookieName = process.env.PORTAL_COOKIE_NAME || 'portal_session';
     res.append('Set-Cookie', `${cookieName}=${token}; Path=/; SameSite=Lax`);
-    // Start clean: no previous local session, no logout block
+    // Start clean: no previous local session
     res.append('Set-Cookie', `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
-    res.append('Set-Cookie', `${PORTAL_OPT_OUT_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
     res.redirect('/');
   });
 
   app.post('/api/auth/logout', (req: Request, res: Response) => {
     clearSessionCookie(req, res);
-    // Without this, the portal cookie would sign the user straight back in. It is tied to that portal
-    // session: a new portal login (new token) signs in again. Session-only cookie.
-    const fingerprint = portalTokenFingerprint(req);
-    if (fingerprint) res.append('Set-Cookie', `${PORTAL_OPT_OUT_COOKIE}=${fingerprint}; Path=/; HttpOnly; SameSite=Strict`);
+    // Tidy up the cookie an earlier version left in some browsers
+    res.append('Set-Cookie', `${LEGACY_OPT_OUT_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
     res.json({ success: true });
   });
 
