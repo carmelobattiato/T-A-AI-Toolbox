@@ -4,6 +4,12 @@
 
 ---
 
+## [0.6] — 2026-10-23
+
+- **Export dei dati (solo admin).** Nuovo tab "Export data" nelle impostazioni: scarica uno zip `ADMPB_DATA_aaaammgg.zip` con tutti i file `.json` della cartella `data/`, interi e così come sono salvati (mappa, registro modifiche, utenti, impostazioni). Contiene hash delle password e chiavi API: da custodire con cura. Endpoint `GET /api/admin/export` (401 senza login, 403 per chi non è admin); nessuna libreria aggiunta. Ogni export è scritto nel log del server con l'utente che l'ha richiesto.
+
+---
+
 ## [0.5] — 2026-10-23
 
 - **Autologin dal portale.** Se il portale passa il cookie `portal_session` (JWT RS256) e il claim `name` (altrimenti `preferred_username`/`email` senza dominio) corrisponde a un utente attivo, l'accesso è automatico, senza form. Controlli: `alg` solo RS256, `iss`, `aud` e `exp`. Gli utenti non vengono mai creati da qui. Il logout impedisce il rientro automatico per quella sessione del portale: un nuovo token del portale fa entrare di nuovo. Gli utenti entrati così non devono cambiare password. Variabili: `PORTAL_COOKIE_NAME`, `PORTAL_JWT_ISSUER` (default `portal-genai-auth`), `PORTAL_JWT_AUDIENCE` (default `portal-backend`), `PORTAL_JWT_PUBLIC_KEY` (PEM) oppure `PORTAL_JWKS_URL`. Senza chiave l'autologin è spento. `PORTAL_AUTOLOGIN_INSECURE=1` accetta i token senza verificare la firma ed espone `/api/auth/test-portal-cookie`: **solo per i test, da togliere/non impostare in produzione**.

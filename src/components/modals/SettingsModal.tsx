@@ -3,6 +3,7 @@ import { AISettings } from '../../types/index.ts';
 import { normalizeBaseUrl } from '../../utils/url.ts';
 import { UsersPanel } from './UsersPanel.tsx';
 import { PracticesPanel } from './PracticesPanel.tsx';
+import { ExportPanel } from './ExportPanel.tsx';
 
 type Provider = 'gemini' | 'openai';
 
@@ -43,12 +44,13 @@ interface SettingsModalProps {
   initialTab?: SettingsTab;
 }
 
-type SettingsTab = 'ai' | 'users' | 'practices';
+type SettingsTab = 'ai' | 'users' | 'practices' | 'export';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'ai', label: 'AI engine' },
   { id: 'users', label: 'Users & roles' },
   { id: 'practices', label: 'Practice' },
+  { id: 'export', label: 'Export data' },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -232,6 +234,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {tab === 'users' && <UsersPanel />}
+        {tab === 'export' && <ExportPanel />}
         {tab === 'practices' && <PracticesPanel onChanged={() => onPracticesChanged?.()} />}
 
         {/* Content */}

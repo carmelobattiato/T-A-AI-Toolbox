@@ -6,6 +6,7 @@ import { userStore } from './userStore.ts';
 import { handleAssistantChat } from './assistant.ts';
 import { authorizeCreate, authorizeEdit, registerAuthRoutes, requireAdmin, sendError } from './auth.ts';
 import { getUser, internalError } from './http.ts';
+import { buildDataExport, exportFileName } from './exportData.ts';
 
 // Practice selected by a read request; older clients send nothing and get the default map
 function practiceFromQuery(req: Request, res: Response): string | null {
@@ -62,6 +63,20 @@ export function registerApiRoutes(app: Express) {
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
+    }
+  });
+
+  // --- Data export (admin only): every .json file of the data folder, zipped ---
+  app.get('/api/admin/export', requireAdmin, (req: Request, res: Response) => {
+    try {
+      const { zip, files } = buildDataExport();
+      console.log(`Data export by ${getUser(req)}: ${files.join(', ')}`);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${exportFileName()}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(zip);
+    } catch (err) {
+      internalError(res, err);
     }
   });
 
