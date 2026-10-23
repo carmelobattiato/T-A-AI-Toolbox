@@ -4,6 +4,11 @@
 
 ---
 
+## [0.9] — 2026-10-23
+
+- **Filtro "Created":** la scala dello slider è ora 1, 2, 3 … 30 giorni e, come ultimo passo, **All** (prima "All" era all'estremo sinistro e a 30 giorni gli elementi più vecchi sparivano). Di default lo slider è su All.
+---
+
 ## [0.8] — 2026-10-23
 
 - **Autologin: niente più cookie `adm_no_autologin`.** Non viene più creato (né al logout né altrove) e non influisce più sull'accesso; al logout e al login di prova viene solo cancellato dai browser che lo avevano. Conseguenza: se il cookie del portale è ancora valido, dopo "Sign out" l'accesso automatico si riattiva al successivo caricamento della pagina o al controllo della sessione (ogni minuto).

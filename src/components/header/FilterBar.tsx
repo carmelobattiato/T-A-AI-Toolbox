@@ -35,7 +35,9 @@ const TypeToggle: React.FC<TypeToggleProps> = ({ label, checked, onToggle, onCla
 );
 
 export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange }) => {
-  const days = filters.maxAgeDays ?? 0;
+  // Slider scale: 1 … 30 days, then "All" as the last step
+  const MAX_DAYS = 30;
+  const days = filters.maxAgeDays ?? MAX_DAYS + 1;
   const isActive = filters.maxAgeDays !== null || filters.tagQuery.trim() !== '';
 
   return (
@@ -45,13 +47,13 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange })
         <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">Created</span>
         <input
           type="range"
-          min={0}
-          max={30}
+          min={1}
+          max={MAX_DAYS + 1}
           step={1}
           value={days}
           onChange={e => {
             const value = Number(e.target.value);
-            onFilterChange({ ...filters, maxAgeDays: value === 0 ? null : value });
+            onFilterChange({ ...filters, maxAgeDays: value > MAX_DAYS ? null : value });
           }}
           className="w-44 accent-purple-600 cursor-pointer"
           aria-label="Filter by days since creation"
