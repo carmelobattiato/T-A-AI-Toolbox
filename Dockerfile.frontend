@@ -27,7 +27,8 @@ FROM nginxinc/nginx-unprivileged:alpine
 # Keeps libxml2 2.13.9-r2 (no fix in Alpine v3.24 yet) out of the image.
 USER root
 # curl 8.22.0-r0 nel base image: fix 8.23.0-r0 in Alpine v3.24 (CVE-2026-92392)
-RUN apk upgrade --no-cache curl libcurl && apk del --no-cache nginx-module-xslt nginx-module-njs libxslt libxml2
+# brotli-libs 1.2.0-r1 nel base image: fix 1.2.1-r0 (CVE-2026-111497, CRITICAL)
+RUN apk upgrade --no-cache curl libcurl brotli-libs && apk del --no-cache nginx-module-xslt nginx-module-njs libxslt libxml2
 USER 101
 
 # Copy custom Nginx configuration with reverse proxy for /api/
