@@ -199,6 +199,8 @@ function resolveIcon(value: unknown, current: string | null | undefined): string
   return cleanIcon(value) ?? cleanIcon(current);
 }
 
+const ITEM_TYPE_VALUES = ['TOOL', 'IDEA', 'NEED'];
+
 function cleanPriority(type: string, value: unknown): number | undefined {
   if (type === 'TOOL') return undefined;
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
@@ -824,6 +826,13 @@ class DatabaseStore {
     };
     // null clears the icon (back to default); an unknown key is ignored and keeps the current one
     if ('icon' in updates) updated.icon = resolveIcon(updates.icon, current.icon);
+    // Changing the kind (Tool / WiP / Need): the map places it again, and tools have no priority
+    if ('type' in updates && updates.type !== current.type) {
+      if (!ITEM_TYPE_VALUES.includes(updates.type as string)) throw new Error('Invalid type: use TOOL, IDEA or NEED');
+      delete updated.positionX;
+      delete updated.positionY;
+      if (updates.type === 'TOOL') delete updated.priority;
+    }
     if ('priority' in updates) {
       const priority = updates.priority === null ? undefined : cleanPriority(updated.type, updates.priority) ?? current.priority;
       if (priority == null) delete updated.priority;

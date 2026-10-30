@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Phase, Item, FilterState, DashboardTile, Practice, DEFAULT_PRACTICE_ID } from './types/index.ts';
+import { Phase, Item, ItemType, FilterState, DashboardTile, Practice, DEFAULT_PRACTICE_ID } from './types/index.ts';
 import { useAuth } from './auth/AuthContext.tsx';
 import { Header, AppView } from './components/header/Header.tsx';
 import { Dashboard } from './components/dashboard/Dashboard.tsx';
@@ -462,6 +462,24 @@ export default function App() {
     setEditingNeed(null);
   };
 
+  // Changes the kind of an element (Tool / WiP / Need); the server keeps the rest of the data
+  const handleChangeType = async (item: Item, type: ItemType) => {
+    try {
+      const res = await fetch(`/api/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not change the type');
+      setItems(prev => prev.map(i => (i.id === data.id ? data : i)));
+      const label = type === 'TOOL' ? 'Tool' : type === 'IDEA' ? 'WiP' : 'Need';
+      showToast(`"${data.title}" is now a ${label}.`);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const handleDeleteItem = async (itemId: string) => {
     try {
       const res = await fetch(`/api/items/${itemId}`, { method: 'DELETE' });
@@ -723,6 +741,7 @@ export default function App() {
               }
             }}
             onDeleteItem={handleDeleteItem}
+            onChangeType={handleChangeType}
             onAddAttachment={handleAddAttachment}
             onDeleteAttachment={handleDeleteAttachment}
           />

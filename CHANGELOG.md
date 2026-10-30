@@ -4,6 +4,11 @@
 
 ---
 
+## [0.10] — 2026-10-30
+
+- **Cambio di tipo degli elementi.** Dal pannello dettagli di un tool, WiP o esigenza si può passare da un tipo all'altro con il selettore Tool / WiP / Need in alto. Titolo, fasi, owner, tag, clienti, note e allegati restano; l'elemento viene riposizionato sulla mappa. Passando a Tool la priorità viene tolta (con conferma se era impostata). Il server accetta solo TOOL, IDEA o NEED e registra il cambio nel registro modifiche. Il selettore non compare per chi non può modificare la practice.
+---
+
 ## [0.9] — 2026-10-23
 
 - **Filtro "Created":** la scala dello slider è ora 1, 2, 3 … 30 giorni e, come ultimo passo, **All** (prima "All" era all'estremo sinistro e a 30 giorni gli elementi più vecchi sparivano). Di default lo slider è su All.

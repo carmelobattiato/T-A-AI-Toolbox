@@ -12,7 +12,7 @@ if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     exit 1
 fi
 
-DEFAULT_PORT=3000
+DEFAULT_PORT=8091
 read -r -p "Porta su cui avviare l'applicazione [${DEFAULT_PORT}]: " PORT
 PORT=${PORT:-$DEFAULT_PORT}
 

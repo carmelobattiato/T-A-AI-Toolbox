@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toSafeHref } from '../../utils/url.ts';
-import { Item, Phase, Attachment } from '../../types/index.ts';
+import { Item, ItemType, Phase, Attachment } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
 import { getOwnerInitials } from '../../utils/owner.ts';
 import {
@@ -18,6 +18,9 @@ import {
   FileText
 } from 'lucide-react';
 
+const ITEM_KINDS: ItemType[] = ['TOOL', 'IDEA', 'NEED'];
+const TYPE_LABEL: Record<ItemType, string> = { TOOL: 'Tool', IDEA: 'WiP', NEED: 'Need' };
+
 interface ItemDrawerProps {
   item: Item;
   phases: Phase[];
@@ -25,6 +28,7 @@ interface ItemDrawerProps {
   onFocusPhase: (phaseId: string) => void;
   onEditItem: (item: Item) => void;
   onDeleteItem: (itemId: string) => void;
+  onChangeType: (item: Item, type: ItemType) => void;
   onAddAttachment: (itemId: string, fileData: { fileName: string; mimeType: string; data: string }) => Promise<void>;
   onDeleteAttachment: (attachmentId: string) => Promise<void>;
   readOnly?: boolean;
@@ -37,6 +41,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   onFocusPhase,
   onEditItem,
   onDeleteItem,
+  onChangeType,
   onAddAttachment,
   onDeleteAttachment,
   readOnly = false,
@@ -96,6 +101,15 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
 
   const theme = getThemeColor();
 
+  const changeKind = (kind: ItemType) => {
+    if (kind === item.type) return;
+    if (kind === 'TOOL' && item.priority != null) {
+      // Tools have no priority: the server drops it
+      if (!window.confirm(`Tools have no priority. P-${item.priority} will be removed. Change to Tool?`)) return;
+    }
+    onChangeType(item, kind);
+  };
+
   return (
     <div className="w-[380px] md:w-[420px] h-full bg-white border-l border-slate-200 shadow-2xl flex flex-col z-30 animate-in slide-in-from-right duration-250">
       {/* Header */}
@@ -109,9 +123,28 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
               {item.title}
             </h2>
             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-              <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-md border ${theme.bg} ${theme.text} ${theme.border}`}>
-                {item.type === 'TOOL' ? 'Existing tool' : item.type === 'IDEA' ? 'WiP' : 'Need'}
-              </span>
+              {readOnly ? (
+                <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-md border ${theme.bg} ${theme.text} ${theme.border}`}>
+                  {TYPE_LABEL[item.type]}
+                </span>
+              ) : (
+                // Kind of element: switching keeps the common data (title, phases, owner, tags...)
+                <div className="inline-flex items-center rounded-md border border-slate-200 bg-white p-0.5">
+                  {ITEM_KINDS.map(kind => (
+                    <button
+                      key={kind}
+                      type="button"
+                      aria-pressed={item.type === kind}
+                      onClick={() => changeKind(kind)}
+                      className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors cursor-pointer ${
+                        item.type === kind ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      {TYPE_LABEL[kind]}
+                    </button>
+                  ))}
+                </div>
+              )}
               {item.generalizationRequired && (
                 <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
                   To be generalized
