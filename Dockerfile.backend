@@ -15,6 +15,10 @@ COPY package*.json ./
 # typescript and the other devDependencies are left out of the image)
 RUN npm ci --omit=dev
 
+# Update the npm CLI bundled in the base image (pacote, sigstore... with HIGH CVEs).
+# Only npm is updated, not Node.js: the runtime below calls tsx directly, not npm.
+RUN npm install -g npm@latest
+
 # Copy server code and required shared type modules
 COPY tsconfig.json ./
 COPY server/ ./server/
