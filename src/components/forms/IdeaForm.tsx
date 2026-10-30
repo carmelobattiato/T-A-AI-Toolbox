@@ -46,6 +46,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
   const [tags, setTags] = useState(formatList(seed?.tags));
   const [customers, setCustomers] = useState(formatList(seed?.customers));
   const [priority, setPriority] = useState(seed?.priority != null ? String(seed.priority) : '');
+  const [completion, setCompletion] = useState(seed?.completion != null ? String(seed.completion) : '0');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -73,6 +74,11 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
       alert('Priority must be a whole number, 1 or higher');
       return;
     }
+    const completionValue = completion.trim() === '' ? null : Number(completion);
+    if (completionValue !== null && (!Number.isFinite(completionValue) || completionValue < 0 || completionValue > 100)) {
+      alert('Completion must be a number from 0 to 100');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -90,6 +96,7 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
         tags: parseList(tags),
         customers: parseList(customers),
         priority: priorityValue,
+        completion: completionValue,
         portalProjectId: prefill?.portalProjectId ?? undefined,
         portalInfo: prefill?.portalInfo ?? undefined,
       });
@@ -242,6 +249,19 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
                 value={priority}
                 onChange={e => setPriority(e.target.value)}
                 placeholder="1 = high"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1" title="How far the work has gone, shown on the circle">Completion (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={completion}
+                onChange={e => setCompletion(e.target.value)}
+                placeholder="0-100"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs"
               />
             </div>

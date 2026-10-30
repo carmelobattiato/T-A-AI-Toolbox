@@ -4,6 +4,22 @@
 
 ---
 
+## [0.13] — 2026-10-30
+
+- **Popup dei nodi sopra gli altri.** Il nodo sotto il mouse passa in primo piano (z-index), così il popup di Tool, Need e WiP non finisce più sotto i nodi vicini.
+
+- **Zoom della mappa.** La percentuale accanto ai pulsanti di zoom mostra lo zoom reale e cambia con "+" e "−" (prima restava fissa a 100%). Ogni "+" o "−" cambia lo zoom di 10 punti, atterrando sui multipli di 10 (82% → 90% → 100%; 82% → 80% → 70%). Il pulsante centrale torna allo zoom predefinito (82%), come prima; il titolo non promette più 100%.
+
+- **Completamento del WiP parte da 0%.** Un WiP nuovo, o un Need (o Tool) promosso a WiP, nasce con completamento 0% se non viene indicato un valore. Il form WiP propone 0. Un WiP senza valore mostra comunque 0% sul cerchio.
+
+- **Efficienza dal portale.** Quando un Tool viene collegato a una soluzione del portale, o creato dal catalogo, il campo Efficiency (%) si compila con la `efficiency_percentage` della soluzione, se il portale ne ha una. Anche "Update from portal" la riallinea in questo caso; se il portale non ha il dato, il valore inserito a mano resta. I WiP non ricevono l'efficienza dal portale.
+
+- **Tag sulle schede.** Sul cerchio di Need, Tool e WiP: iniziali dell'owner sul bordo in basso a sinistra, con contorno nero (nome esteso nel tooltip; per le email il nome viene ricavato dall'indirizzo); priorità P-n in basso a destra (sul bordo, sotto la percentuale, per i WiP); la percentuale dei WiP sta in basso a destra. Tool e WiP non collegati al portale mostrano sul bordo in alto a destra un tag arancio scuro con l'icona di unlink ("Not linked to any application on the portal"). Ogni tag spiega cosa rappresenta con un piccolo tooltip che compare dopo 2 secondi di permanenza del puntatore.
+
+- **Percentuali sulle schede.** Un WiP mostra il **completamento** (campo "Completion (%)", 0-100) con un piccolo tag **arancione** sul cerchio, accanto al P-n. Un Tool mostra l'**efficienza** dell'attività che copre (campo "Efficiency (%)", 0-100) con un tag **verde**. Senza valore non compare nulla. Il server accetta il campo solo per il tipo giusto, arrotonda e limita a 0-100, e ignora i valori non numerici. L'efficienza del Tool è inserita a mano: il sync con il portale non la modifica.
+
+---
+
 ## [0.12] — 2026-10-30
 
 - **Tool e WiP collegati al portale.** Nel pannello dettagli di un Tool o WiP la sezione **Portal** permette di: collegarlo a una soluzione del catalogo (**Link to a portal solution**, stessa finestra con ricerca e filtri); riallinearlo alla soluzione (**Update from portal**: titolo, descrizione, owner, tag, clienti, link e dettagli del portale); cambiare soluzione (**Change solution**); scollegarlo (**Unlink**), lasciando i dati attuali. Il sync tocca solo i campi del portale: note, fasi, icona, priorità, allegati e posizione restano. I dettagli del portale (pillar, lifecycle, efficienza, link) sono in `portalInfo`, in sola lettura, e non più nelle note. Le schede create dal catalogo prima di questa modifica tengono nelle note il blocco "Pillar / Lifecycle / …": si può cancellare a mano. Endpoint: `POST` e `DELETE /api/items/:id/portal-link`, `POST /api/items/:id/portal-sync`. Solo editor della practice e admin; le Need non si collegano.

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Item, Phase } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
+import { OwnerTag, PercentTag, PriorityTag, UnlinkTag } from './NodeTags.tsx';
 
 interface ToolNodeData {
   item: Item;
@@ -74,17 +75,13 @@ export const ToolNode: React.FC<{ data: ToolNodeData }> = ({ data }) => {
           </span>
         )}
 
-        {/* Priority badge (only when set) */}
-        <div className="absolute bottom-1 right-2 flex items-center">
-          {item.priority != null && (
-            <div
-              title={`Priority ${item.priority} (1 = highest)`}
-              className="h-4 min-w-4 px-1 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs whitespace-nowrap"
-            >
-              P-{item.priority}
-            </div>
-          )}
+        {/* Tags: owner (bottom left), priority and efficiency (bottom right), unlink from the portal (top right) */}
+        <OwnerTag owner={item.owner} />
+        <div className="absolute bottom-1 right-2 flex items-center gap-1">
+          <PriorityTag priority={item.priority} />
+          <PercentTag value={item.efficiency} tone="green" label="Efficiency of this activity" />
         </div>
+        {!item.portalProjectId && <UnlinkTag />}
       </div>
 
       {/* Bottom Handle */}

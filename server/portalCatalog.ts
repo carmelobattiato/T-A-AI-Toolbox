@@ -235,6 +235,10 @@ export function projectToItemDraft(
   const times = before != null && after != null ? `${before} ${unit} → ${after} ${unit}`.trim() : '';
   const percentage = project.efficiency_percentage != null ? `${project.efficiency_percentage}%` : '';
   const efficiency = [times, percentage].filter(Boolean).join(' ');
+  // The solution's efficiency (0-100) is the Tool's efficiency; absent when the portal has none
+  const efficiencyPct = typeof project.efficiency_percentage === 'number'
+    ? Math.min(100, Math.max(0, Math.round(project.efficiency_percentage)))
+    : undefined;
   const portalInfo = [
     pillar && `Pillar: ${pillar.code} ${pillar.name}`,
     project.lifecycle_status && `Lifecycle: ${project.lifecycle_status}`,
@@ -270,6 +274,7 @@ export function projectToItemDraft(
     githubUrl,
     demoUrl,
     catalogUrl,
+    ...(efficiencyPct !== undefined ? { efficiency: efficiencyPct } : {}),
   };
 }
 
@@ -291,7 +296,7 @@ async function loadDraft(baseUrl: string, token: string, id: string, type: ItemT
 
 // Only the fields the portal owns are taken from a draft (never phases, icon, priority, notes...)
 const PORTAL_OWNED_FIELDS = [
-  'title', 'summary', 'description', 'owner', 'tags', 'customers', 'githubUrl', 'demoUrl', 'catalogUrl', 'portalInfo',
+  'title', 'summary', 'description', 'owner', 'tags', 'customers', 'githubUrl', 'demoUrl', 'catalogUrl', 'portalInfo', 'efficiency',
 ] as const;
 
 function portalFieldsOf(draft: CatalogDraft): PortalFields {

@@ -81,6 +81,10 @@ export interface Item {
   icon?: string | null;
   // Need and Idea only: 1 = highest priority
   priority?: number | null;
+  // WiP only: how far the work has gone, 0-100 (orange % on the circle)
+  completion?: number | null;
+  // Tool only: efficiency of the activity it covers, 0-100 (green % on the circle)
+  efficiency?: number | null;
   // Portal solution this Tool or WiP is linked to; empty = not linked. The portal owns the fields listed in server/store.ts (applyPortalSync)
   portalProjectId?: string | null;
   // Portal details (pillar, lifecycle, efficiency, links...) as read by the last sync; read-only in the drawer

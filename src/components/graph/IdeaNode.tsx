@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Item, Phase } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
+import { OwnerTag, PercentTag, PriorityTag, UnlinkTag } from './NodeTags.tsx';
 
 interface IdeaNodeData {
   item: Item;
@@ -71,17 +72,14 @@ export const IdeaNode: React.FC<{ data: IdeaNodeData }> = ({ data }) => {
           WiP
         </span>
 
-        {/* Priority badge (only when set) */}
-        <div className="absolute bottom-1 right-2 flex items-center">
-          {item.priority != null && (
-            <div
-              title={`Priority ${item.priority} (1 = highest)`}
-              className="h-4 min-w-4 px-1 rounded-full bg-slate-800 text-white text-[8px] font-bold flex items-center justify-center border border-white shadow-xs whitespace-nowrap"
-            >
-              P-{item.priority}
-            </div>
-          )}
+        {/* Tags on the rim: owner (bottom left), priority (bottom, under the completion), unlink (top right).
+            The completion stays in the bottom right corner */}
+        <OwnerTag owner={item.owner} />
+        <PriorityTag priority={item.priority} onRim />
+        <div className="absolute bottom-1 right-2 flex items-center gap-1">
+          <PercentTag value={item.completion ?? 0} tone="orange" label="Completion of the work" />
         </div>
+        {!item.portalProjectId && <UnlinkTag />}
       </div>
 
       <Handle

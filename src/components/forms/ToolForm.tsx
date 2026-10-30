@@ -47,6 +47,7 @@ export const ToolForm: React.FC<ToolFormProps> = ({
   const [catalogUrl, setCatalogUrl] = useState(seed?.catalogUrl || '');
   const [demoUrl, setDemoUrl] = useState(seed?.demoUrl || '');
   const [notes, setNotes] = useState(seed?.notes || '');
+  const [efficiency, setEfficiency] = useState(seed?.efficiency != null ? String(seed.efficiency) : '');
   const [tags, setTags] = useState(formatList(seed?.tags));
   const [customers, setCustomers] = useState(formatList(seed?.customers));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,6 +68,11 @@ export const ToolForm: React.FC<ToolFormProps> = ({
       alert('Select at least one phase covered by the Tool');
       return;
     }
+    const efficiencyValue = efficiency.trim() === '' ? null : Number(efficiency);
+    if (efficiencyValue !== null && (!Number.isFinite(efficiencyValue) || efficiencyValue < 0 || efficiencyValue > 100)) {
+      alert('Efficiency must be a number from 0 to 100');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -85,6 +91,7 @@ export const ToolForm: React.FC<ToolFormProps> = ({
         notes: notes.trim() || undefined,
         tags: parseList(tags),
         customers: parseList(customers),
+        efficiency: efficiencyValue,
         portalProjectId: prefill?.portalProjectId ?? undefined,
         portalInfo: prefill?.portalInfo ?? undefined,
       });
@@ -229,6 +236,19 @@ export const ToolForm: React.FC<ToolFormProps> = ({
                 value={owner}
                 onChange={e => setOwner(e.target.value)}
                 placeholder="e.g. Team Cloud / Cloud Architecture"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1" title="Efficiency of the activity this Tool covers, shown on the circle">Efficiency (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={efficiency}
+                onChange={e => setEfficiency(e.target.value)}
+                placeholder="0-100"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
               />
             </div>

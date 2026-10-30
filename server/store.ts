@@ -209,7 +209,7 @@ function cleanPortalInfo(value: unknown): string | undefined {
 // Fields the portal owns on a linked Tool or WiP: only applyPortalSync changes them
 export type PortalFields = Partial<Pick<Item,
   'title' | 'summary' | 'description' | 'owner' | 'tags' | 'customers' | 'githubUrl' | 'demoUrl' | 'catalogUrl'
-  | 'portalProjectId' | 'portalInfo' | 'portalSyncedAt'
+  | 'portalProjectId' | 'portalInfo' | 'portalSyncedAt' | 'efficiency'
 >>;
 
 function resolveIcon(value: unknown, current: string | null | undefined): string | undefined {
@@ -222,6 +222,14 @@ const ITEM_TYPE_VALUES = ['TOOL', 'IDEA', 'NEED'];
 function cleanPriority(type: string, value: unknown): number | undefined {
   if (type === 'TOOL') return undefined;
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+}
+
+// Percentages 0-100 (WiP completion, Tool efficiency): null or empty clears; a non-number is ignored (undefined)
+function cleanPercent(value: unknown): number | null | undefined {
+  if (value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(100, Math.max(0, Math.round(n)));
 }
 
 const DEFAULT_ITEMS: Omit<Item, 'practiceId'>[] = [
@@ -810,6 +818,9 @@ class DatabaseStore {
       tags: itemData.tags ?? [],
       customers: itemData.customers ?? [],
       priority: cleanPriority(itemData.type || 'TOOL', itemData.priority),
+      // A new WiP starts at 0% unless a value is given
+      completion: itemData.type === 'IDEA' ? cleanPercent(itemData.completion) ?? 0 : undefined,
+      efficiency: itemData.type === 'TOOL' ? cleanPercent(itemData.efficiency) ?? undefined : undefined,
       icon: cleanIcon(itemData.icon),
       portalProjectId: cleanPortalProjectId(itemData.portalProjectId),
       portalInfo: cleanPortalInfo(itemData.portalInfo),
@@ -859,6 +870,17 @@ class DatabaseStore {
       if (priority == null) delete updated.priority;
       else updated.priority = priority;
     }
+    // Completion belongs to WiPs and efficiency to Tools; an invalid value, or a value for the other kind, keeps the current one
+    if ('completion' in updates) {
+      const value = cleanPercent(updates.completion);
+      updated.completion = updated.type === 'IDEA' && value !== undefined ? value : current.completion;
+    }
+    if ('efficiency' in updates) {
+      const value = cleanPercent(updates.efficiency);
+      updated.efficiency = updated.type === 'TOOL' && value !== undefined ? value : current.efficiency;
+    }
+    // A WiP always has a completion: a new one, or one promoted from a Need or Tool, starts at 0%
+    if (updated.type === 'IDEA' && updated.completion == null) updated.completion = 0;
 
     this.data.items[idx] = updated;
     this.addAuditLog(user, 'UPDATE', 'ITEM', id, updates, current.practiceId);

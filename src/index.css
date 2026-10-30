@@ -41,6 +41,11 @@
   background: #6366f1;
 }
 
+/* A hovered node comes above the nodes around it, so its tooltip is never covered by them */
+.react-flow__node:hover {
+  z-index: 1000 !important;
+}
+
 /* Smooth transitions for focus states */
 .flow-node-transition {
   transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease;

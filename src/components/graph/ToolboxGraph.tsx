@@ -9,6 +9,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useViewport,
   useNodesInitialized,
   ReactFlowProvider,
 } from '@xyflow/react';
@@ -91,7 +92,18 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
   onAddNeed,
   onUpdateItemPosition,
 }) => {
-  const { zoomIn, zoomOut, setViewport, fitView } = useReactFlow();
+  const { zoomTo, setViewport, fitView } = useReactFlow();
+  // Current zoom, shown next to the zoom buttons (the view is re-rendered when it changes)
+  const { zoom } = useViewport();
+
+  // The zoom buttons move in steps of 10 points and land on multiples of 10 (82% → 90% → 100%, 82% → 80% → 70%)
+  const zoomBy = (direction: 1 | -1) => {
+    const current = Math.round(zoom * 100);
+    const next = direction > 0
+      ? (Math.floor(current / 10) + 1) * 10
+      : (Math.ceil(current / 10) - 1) * 10;
+    zoomTo(next / 100, { duration: 200 });
+  };
 
   // Selected item reference if any
   const focusedItem = useMemo(
@@ -567,7 +579,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
         >
           <button
             type="button"
-            onClick={() => zoomOut()}
+            onClick={() => zoomBy(-1)}
             className="p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
             title="Zoom out"
           >
@@ -577,9 +589,9 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
             type="button"
             onClick={handleResetView}
             className="px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-            title="Reset view to 100%"
+            title="Reset view to the default zoom"
           >
-            100%
+            {Math.round(zoom * 100)}%
           </button>
           <button
             type="button"
@@ -591,7 +603,7 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => zoomIn()}
+            onClick={() => zoomBy(1)}
             className="p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
             title="Zoom in"
           >
