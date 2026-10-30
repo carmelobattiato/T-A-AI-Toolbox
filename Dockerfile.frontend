@@ -26,7 +26,8 @@ FROM nginxinc/nginx-unprivileged:alpine
 # Remove the XSLT/njs modules and libxml2 pulled in by the base image (not used by docker/nginx.conf).
 # Keeps libxml2 2.13.9-r2 (no fix in Alpine v3.24 yet) out of the image.
 USER root
-RUN apk del --no-cache nginx-module-xslt nginx-module-njs libxslt libxml2
+# curl 8.22.0-r0 nel base image: fix 8.23.0-r0 in Alpine v3.24 (CVE-2026-92392)
+RUN apk upgrade --no-cache curl libcurl && apk del --no-cache nginx-module-xslt nginx-module-njs libxslt libxml2
 USER 101
 
 # Copy custom Nginx configuration with reverse proxy for /api/
