@@ -3,6 +3,7 @@ import { toSafeHref } from '../../utils/url.ts';
 import { Item, ItemType, Phase, Attachment } from '../../types/index.ts';
 import { getItemIcon } from '../../utils/icons.tsx';
 import { getOwnerInitials } from '../../utils/owner.ts';
+import { PortalSection } from './PortalSection.tsx';
 import {
   X,
   ExternalLink,
@@ -29,6 +30,10 @@ interface ItemDrawerProps {
   onEditItem: (item: Item) => void;
   onDeleteItem: (itemId: string) => void;
   onChangeType: (item: Item, type: ItemType) => void;
+  // Portal link of a Tool or WiP (see PortalSection): linking opens the catalog, the others change the card now
+  onPortalLink: (item: Item) => void;
+  onPortalSync: (item: Item) => Promise<void>;
+  onPortalUnlink: (item: Item) => Promise<void>;
   onAddAttachment: (itemId: string, fileData: { fileName: string; mimeType: string; data: string }) => Promise<void>;
   onDeleteAttachment: (attachmentId: string) => Promise<void>;
   readOnly?: boolean;
@@ -42,6 +47,9 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   onEditItem,
   onDeleteItem,
   onChangeType,
+  onPortalLink,
+  onPortalSync,
+  onPortalUnlink,
   onAddAttachment,
   onDeleteAttachment,
   readOnly = false,
@@ -50,6 +58,16 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
+
+  const runPortalAction = async (action: () => Promise<void>) => {
+    setPortalBusy(true);
+    try {
+      await action();
+    } finally {
+      setPortalBusy(false);
+    }
+  };
 
   const coveredPhases = phases.filter(p => item.phaseIds.includes(p.id));
   const attachments = item.attachments || [];
@@ -269,6 +287,18 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Portal link: the details the portal gave, and update / change / unlink */}
+            {item.type !== 'NEED' && (
+              <PortalSection
+                item={item}
+                readOnly={readOnly}
+                busy={portalBusy}
+                onLink={() => onPortalLink(item)}
+                onSync={() => runPortalAction(() => onPortalSync(item))}
+                onUnlink={() => runPortalAction(() => onPortalUnlink(item))}
+              />
+            )}
 
             {/* Specific fields for TOOL */}
             {item.type === 'TOOL' && (

@@ -4,6 +4,15 @@
 
 ---
 
+## [0.12] — 2026-10-30
+
+- **Tool e WiP collegati al portale.** Nel pannello dettagli di un Tool o WiP la sezione **Portal** permette di: collegarlo a una soluzione del catalogo (**Link to a portal solution**, stessa finestra con ricerca e filtri); riallinearlo alla soluzione (**Update from portal**: titolo, descrizione, owner, tag, clienti, link e dettagli del portale); cambiare soluzione (**Change solution**); scollegarlo (**Unlink**), lasciando i dati attuali. Il sync tocca solo i campi del portale: note, fasi, icona, priorità, allegati e posizione restano. I dettagli del portale (pillar, lifecycle, efficienza, link) sono in `portalInfo`, in sola lettura, e non più nelle note. Le schede create dal catalogo prima di questa modifica tengono nelle note il blocco "Pillar / Lifecycle / …": si può cancellare a mano. Endpoint: `POST` e `DELETE /api/items/:id/portal-link`, `POST /api/items/:id/portal-sync`. Solo editor della practice e admin; le Need non si collegano.
+- **Catalogo del portale.** Quando si aggiunge un Tool o un WiP si sceglie tra **New application** (modulo vuoto, come prima) e **Portal Catalog**: le soluzioni pubblicate sul portale, con ricerca e filtri (pillar, lifecycle, asset type, cluster) e paginazione. Scelta una soluzione, il modulo si apre precompilato con nome, descrizione, tag, clienti e link; le fasi restano da scegliere. L'elemento è una copia: le modifiche successive sul portale non si propagano. Lo possono usare admin ed editor della practice; le esigenze restano come prima. Il backend legge il catalogo con il cookie `portal_session` di chi lo chiede e non salva credenziali.
+- **Settings > Portal.** L'indirizzo del portale è configurabile (admin): il default è `https://portale.genai-garage.accenture.com`, con "Restore default". Lo usano il catalogo, i link alle soluzioni e la schermata "Access not authorized". Accetta solo `https://` (`http://localhost` per lo sviluppo).
+- **`PORTAL_API_TOKEN` (solo sviluppo).** Token di sessione del portale da usare quando l'app gira in locale, dove il cookie del portale non arriva. Ignorato con `NODE_ENV=production`. Non va in file versionati.
+
+---
+
 ## [0.11] — 2026-10-30
 
 - **Utenti (Settings):** la lista è impaginata a 10 utenti per pagina, con un campo di ricerca che filtra per nome, username, ruolo e practice. Con la ricerca la paginazione torna alla prima pagina.

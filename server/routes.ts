@@ -7,6 +7,7 @@ import { handleAssistantChat } from './assistant.ts';
 import { authorizeCreate, authorizeEdit, registerAuthRoutes, requireAdmin, sendError } from './auth.ts';
 import { getUser, internalError } from './http.ts';
 import { buildDataExport, exportFileName, importDataFiles, ImportError } from './exportData.ts';
+import { registerPortalRoutes } from './portalCatalog.ts';
 
 // Practice selected by a read request; older clients send nothing and get the default map
 function practiceFromQuery(req: Request, res: Response): string | null {
@@ -22,6 +23,7 @@ function practiceFromQuery(req: Request, res: Response): string | null {
 // Registers every /api route shared by the dev server and the standalone backend
 export function registerApiRoutes(app: Express) {
   registerAuthRoutes(app);
+  registerPortalRoutes(app);
 
   // --- Practices ---
   app.get('/api/practices', (_req: Request, res: Response) => {

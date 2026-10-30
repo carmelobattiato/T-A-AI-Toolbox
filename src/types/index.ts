@@ -81,6 +81,11 @@ export interface Item {
   icon?: string | null;
   // Need and Idea only: 1 = highest priority
   priority?: number | null;
+  // Portal solution this Tool or WiP is linked to; empty = not linked. The portal owns the fields listed in server/store.ts (applyPortalSync)
+  portalProjectId?: string | null;
+  // Portal details (pillar, lifecycle, efficiency, links...) as read by the last sync; read-only in the drawer
+  portalInfo?: string | null;
+  portalSyncedAt?: string | null;
 
   // Positioning
   positionX?: number;
@@ -180,3 +185,19 @@ export interface AISettings {
   openaiApiKey: string;
   isConfigured?: boolean;
 }
+
+// Portal catalog (server/portalCatalog.ts): a solution as shown in the picker, and the values a new Tool or WiP starts from
+export interface CatalogCard {
+  id: string;
+  name: string;
+  shortDescription: string;
+  pillar: { code: string; name: string } | null;
+  lifecycle: string | null;
+  assetType: string | null;
+  clusters: string[];
+  enablers: string[];
+  efficiencyPercentage: number | null;
+  viewCount: number;
+}
+
+export type CatalogDraft = Partial<Item> & { portalProjectId: string };

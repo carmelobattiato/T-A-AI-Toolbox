@@ -17,8 +17,34 @@ const DEFAULT_SETTINGS: AISettings = {
   openaiApiKey: '',
 };
 
+// Portal that serves the catalog and the links to its pages; the admin can change it in Settings > Portal
+export const DEFAULT_PORTAL_URL = 'https://portale.genai-garage.accenture.com';
+type StoredSettings = AISettings & { portalUrl?: string };
+
 const MASK = '••••••••••••••••';
 const KEY_MISSING = "API key missing. If you changed the URL, enter it again: the saved key is only valid for the saved endpoint.";
+
+// Empty input means the default. https is required; http is accepted only for localhost (local development).
+export function parsePortalUrl(raw: unknown): string {
+  if (raw === undefined || raw === null || (typeof raw === 'string' && !raw.trim())) return DEFAULT_PORTAL_URL;
+  if (typeof raw !== 'string' || raw.length > 300) throw new Error('Invalid portal URL');
+  const trimmed = raw.trim();
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new Error('Invalid portal URL');
+  }
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocal)) {
+    throw new Error('The portal URL must start with https://');
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('The portal URL must not contain credentials, a query string or a fragment');
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
 
 type Provider = 'gemini' | 'openai';
 type TestResult = { success: boolean; message: string; latencyMs?: number };
@@ -64,7 +90,7 @@ export function createGeminiClient(apiKey: string, baseUrl?: string): GoogleGenA
 }
 
 class SettingsStore {
-  private settings: AISettings;
+  private settings: StoredSettings;
 
   constructor() {
     this.settings = this.load();
@@ -81,7 +107,7 @@ class SettingsStore {
     }
   }
 
-  private load(): AISettings {
+  private load(): StoredSettings {
     this.ensureDir();
     if (!fs.existsSync(SETTINGS_FILE)) {
       this.save(DEFAULT_SETTINGS);
@@ -96,7 +122,7 @@ class SettingsStore {
     }
   }
 
-  public save(newSettings: Partial<AISettings>): AISettings {
+  public save(newSettings: Partial<StoredSettings>): StoredSettings {
     this.ensureDir();
     this.settings = { ...this.settings, ...newSettings };
     // Atomic write: a crash mid-write must never leave a truncated settings.json
@@ -108,6 +134,16 @@ class SettingsStore {
 
   public getSettings(): AISettings {
     return { ...this.settings };
+  }
+
+  public getPortalUrl(): string {
+    return this.settings.portalUrl || DEFAULT_PORTAL_URL;
+  }
+
+  public setPortalUrl(raw: unknown): string {
+    const url = parsePortalUrl(raw);
+    this.save({ portalUrl: url });
+    return url;
   }
 
   // The server-side environment key is only sent to Google's default endpoint or to an allow-listed host

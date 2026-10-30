@@ -182,7 +182,7 @@ function slugify(name: string): string {
 // Fields the server owns: a client can never overwrite them through create or update requests
 function withoutServerFields<T extends object>(data: T): T {
   const copy: Record<string, unknown> = { ...(data as Record<string, unknown>) };
-  for (const field of ['id', 'practiceId', 'createdAt', 'createdBy', 'isCore', 'attachments']) delete copy[field];
+  for (const field of ['id', 'practiceId', 'createdAt', 'createdBy', 'isCore', 'attachments', 'portalProjectId', 'portalInfo', 'portalSyncedAt']) delete copy[field];
   return copy as T;
 }
 
@@ -193,6 +193,24 @@ const MAX_ATTACHMENT_CHARS = 7_500_000; // ~5 MB of base64, the limit the UI enf
 function cleanIcon(value: unknown): string | undefined {
   return isIconKey(value) ? value : undefined;
 }
+
+// Id of the portal solution a Tool or WiP is linked to (a UUID); anything else is dropped
+function cleanPortalProjectId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : undefined;
+}
+
+// Portal details text, kept as read from the portal (plain text, bounded)
+function cleanPortalInfo(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 5000) : undefined;
+}
+
+// Fields the portal owns on a linked Tool or WiP: only applyPortalSync changes them
+export type PortalFields = Partial<Pick<Item,
+  'title' | 'summary' | 'description' | 'owner' | 'tags' | 'customers' | 'githubUrl' | 'demoUrl' | 'catalogUrl'
+  | 'portalProjectId' | 'portalInfo' | 'portalSyncedAt'
+>>;
 
 function resolveIcon(value: unknown, current: string | null | undefined): string | undefined {
   if (value === null || value === '') return undefined;
@@ -793,6 +811,9 @@ class DatabaseStore {
       customers: itemData.customers ?? [],
       priority: cleanPriority(itemData.type || 'TOOL', itemData.priority),
       icon: cleanIcon(itemData.icon),
+      portalProjectId: cleanPortalProjectId(itemData.portalProjectId),
+      portalInfo: cleanPortalInfo(itemData.portalInfo),
+      portalSyncedAt: cleanPortalProjectId(itemData.portalProjectId) ? new Date().toISOString() : undefined,
       positionX: itemData.positionX,
       positionY: itemData.positionY,
       createdBy: user,
@@ -841,6 +862,26 @@ class DatabaseStore {
 
     this.data.items[idx] = updated;
     this.addAuditLog(user, 'UPDATE', 'ITEM', id, updates, current.practiceId);
+    this.persist();
+    return {
+      ...updated,
+      attachments: this.data.attachments.filter(a => a.itemId === updated.id)
+    };
+  }
+
+  // Link, sync or unlink with the portal: changes only the portal fields. Notes, phases, icon, priority,
+  // attachments and position stay as they are. The `action` is recorded in the audit log.
+  applyPortalSync(id: string, fields: PortalFields, action: 'link' | 'sync' | 'unlink', user = 'local.user'): Item | null {
+    const idx = this.data.items.findIndex(i => i.id === id);
+    if (idx === -1) return null;
+    const current = this.data.items[idx];
+    const updates: PortalFields = { ...fields };
+    for (const field of ['githubUrl', 'catalogUrl', 'demoUrl'] as const) {
+      if (field in updates) updates[field] = toSafeHref(updates[field]);
+    }
+    const updated: Item = { ...current, ...updates, updatedAt: new Date().toISOString() };
+    this.data.items[idx] = updated;
+    this.addAuditLog(user, 'UPDATE', 'ITEM', id, { portal: action, portalProjectId: updated.portalProjectId ?? null, title: updated.title }, current.practiceId);
     this.persist();
     return {
       ...updated,

@@ -79,7 +79,12 @@ export interface PortalIdentity {
 
 // Whether the request carries a portal cookie at all (valid or not)
 export function portalCookiePresent(req: Request): boolean {
-  return Boolean(readCookie(req, process.env.PORTAL_COOKIE_NAME || DEFAULT_COOKIE));
+  return Boolean(portalCookieValue(req));
+}
+
+// The portal session token sent by the browser, if any (not verified: see portalIdentity)
+export function portalCookieValue(req: Request): string | undefined {
+  return readCookie(req, process.env.PORTAL_COOKIE_NAME || DEFAULT_COOKIE);
 }
 
 // New users are created from portal logins unless PORTAL_AUTOCREATE=0

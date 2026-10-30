@@ -7,6 +7,8 @@ import { X, Wrench, Check } from 'lucide-react';
 
 interface ToolFormProps {
   initialData?: Item | null;
+  // Values to start a new Tool from (a portal solution); the form still creates a new item
+  prefill?: Partial<Item> | null;
   defaultPhaseId?: string;
   // Owner pre-filled for new elements (the logged-in user, else the practice team)
   defaultOwner?: string;
@@ -18,6 +20,7 @@ interface ToolFormProps {
 
 export const ToolForm: React.FC<ToolFormProps> = ({
   initialData,
+  prefill,
   defaultPhaseId,
   defaultOwner = 'Team T&A',
   phases,
@@ -27,23 +30,25 @@ export const ToolForm: React.FC<ToolFormProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [icon, setIcon] = useState<IconKey | null>((initialData?.icon as IconKey | undefined) || null);
-  const [summary, setSummary] = useState(initialData?.summary || '');
-  const [description, setDescription] = useState(initialData?.description || '');
+  // Edited element first, then the portal solution the form starts from
+  const seed: Partial<Item> | null = initialData ?? prefill ?? null;
+  const [title, setTitle] = useState(seed?.title || '');
+  const [icon, setIcon] = useState<IconKey | null>((seed?.icon as IconKey | undefined) || null);
+  const [summary, setSummary] = useState(seed?.summary || '');
+  const [description, setDescription] = useState(seed?.description || '');
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>(
-    initialData?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : phases[0] ? [phases[0].id] : [])
+    seed?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : phases[0] ? [phases[0].id] : [])
   );
-  const [owner, setOwner] = useState(initialData?.owner || defaultOwner);
+  const [owner, setOwner] = useState(seed?.owner || defaultOwner);
   const [generalizationRequired, setGeneralizationRequired] = useState(
-    initialData?.generalizationRequired ?? false
+    seed?.generalizationRequired ?? false
   );
-  const [githubUrl, setGithubUrl] = useState(initialData?.githubUrl || '');
-  const [catalogUrl, setCatalogUrl] = useState(initialData?.catalogUrl || '');
-  const [demoUrl, setDemoUrl] = useState(initialData?.demoUrl || '');
-  const [notes, setNotes] = useState(initialData?.notes || '');
-  const [tags, setTags] = useState(formatList(initialData?.tags));
-  const [customers, setCustomers] = useState(formatList(initialData?.customers));
+  const [githubUrl, setGithubUrl] = useState(seed?.githubUrl || '');
+  const [catalogUrl, setCatalogUrl] = useState(seed?.catalogUrl || '');
+  const [demoUrl, setDemoUrl] = useState(seed?.demoUrl || '');
+  const [notes, setNotes] = useState(seed?.notes || '');
+  const [tags, setTags] = useState(formatList(seed?.tags));
+  const [customers, setCustomers] = useState(formatList(seed?.customers));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -80,6 +85,8 @@ export const ToolForm: React.FC<ToolFormProps> = ({
         notes: notes.trim() || undefined,
         tags: parseList(tags),
         customers: parseList(customers),
+        portalProjectId: prefill?.portalProjectId ?? undefined,
+        portalInfo: prefill?.portalInfo ?? undefined,
       });
       onClose();
     } catch (err: any) {

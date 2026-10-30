@@ -7,6 +7,8 @@ import { X, Sparkles, Check } from 'lucide-react';
 
 interface IdeaFormProps {
   initialData?: Item | null;
+  // Values to start a new WiP from (a portal solution); the form still creates a new item
+  prefill?: Partial<Item> | null;
   defaultPhaseId?: string;
   // Owner pre-filled for new elements (the logged-in user, else the practice team)
   defaultOwner?: string;
@@ -18,6 +20,7 @@ interface IdeaFormProps {
 
 export const IdeaForm: React.FC<IdeaFormProps> = ({
   initialData,
+  prefill,
   defaultPhaseId,
   defaultOwner = 'Team T&A',
   phases,
@@ -27,20 +30,22 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [icon, setIcon] = useState<IconKey | null>((initialData?.icon as IconKey | undefined) || null);
-  const [problem, setProblem] = useState(initialData?.problem || '');
-  const [description, setDescription] = useState(initialData?.description || '');
-  const [requirements, setRequirements] = useState(initialData?.requirements || '');
-  const [expectedBenefit, setExpectedBenefit] = useState(initialData?.expectedBenefit || '');
+  // Edited element first, then the portal solution the form starts from
+  const seed: Partial<Item> | null = initialData ?? prefill ?? null;
+  const [title, setTitle] = useState(seed?.title || '');
+  const [icon, setIcon] = useState<IconKey | null>((seed?.icon as IconKey | undefined) || null);
+  const [problem, setProblem] = useState(seed?.problem || '');
+  const [description, setDescription] = useState(seed?.description || '');
+  const [requirements, setRequirements] = useState(seed?.requirements || '');
+  const [expectedBenefit, setExpectedBenefit] = useState(seed?.expectedBenefit || '');
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>(
-    initialData?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : phases[0] ? [phases[0].id] : [])
+    seed?.phaseIds || (defaultPhaseId ? [defaultPhaseId] : phases[0] ? [phases[0].id] : [])
   );
-  const [owner, setOwner] = useState(initialData?.owner || defaultOwner);
-  const [notes, setNotes] = useState(initialData?.notes || '');
-  const [tags, setTags] = useState(formatList(initialData?.tags));
-  const [customers, setCustomers] = useState(formatList(initialData?.customers));
-  const [priority, setPriority] = useState(initialData?.priority != null ? String(initialData.priority) : '');
+  const [owner, setOwner] = useState(seed?.owner || defaultOwner);
+  const [notes, setNotes] = useState(seed?.notes || '');
+  const [tags, setTags] = useState(formatList(seed?.tags));
+  const [customers, setCustomers] = useState(formatList(seed?.customers));
+  const [priority, setPriority] = useState(seed?.priority != null ? String(seed.priority) : '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const togglePhase = (phaseId: string) => {
@@ -85,6 +90,8 @@ export const IdeaForm: React.FC<IdeaFormProps> = ({
         tags: parseList(tags),
         customers: parseList(customers),
         priority: priorityValue,
+        portalProjectId: prefill?.portalProjectId ?? undefined,
+        portalInfo: prefill?.portalInfo ?? undefined,
       });
       onClose();
     } catch (err: any) {

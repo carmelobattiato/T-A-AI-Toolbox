@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Phase, Item, ItemType, FilterState, DashboardTile, Practice, DEFAULT_PRACTICE_ID } from './types/index.ts';
+import { Phase, Item, ItemType, FilterState, DashboardTile, Practice, CatalogCard, CatalogDraft, DEFAULT_PRACTICE_ID } from './types/index.ts';
+import { portalRequest, jsonBody } from './utils/portal.ts';
 import { useAuth } from './auth/AuthContext.tsx';
 import { Header, AppView } from './components/header/Header.tsx';
 import { Dashboard } from './components/dashboard/Dashboard.tsx';
@@ -16,6 +17,8 @@ import { SettingsModal } from './components/modals/SettingsModal.tsx';
 import { LoginModal } from './components/modals/LoginModal.tsx';
 import { SplashScreen, SPLASH_STORAGE_KEY } from './components/splash/SplashScreen.tsx';
 import { AccessDenied } from './components/splash/AccessDenied.tsx';
+import { NewItemChoice } from './components/modals/NewItemChoice.tsx';
+import { PortalCatalogPicker } from './components/modals/PortalCatalogPicker.tsx';
 import { ProductTour, TOUR_STORAGE_KEY } from './components/tour/ProductTour.tsx';
 import { ChangePasswordModal } from './components/modals/ChangePasswordModal.tsx';
 import { TAIAssistant } from './components/chat/TAIAssistant.tsx';
@@ -99,6 +102,28 @@ export default function App() {
   const [needModalOpen, setNeedModalOpen] = useState(false);
   const [editingNeed, setEditingNeed] = useState<Item | null>(null);
   const [defaultNeedPhaseId, setDefaultNeedPhaseId] = useState<string | undefined>();
+
+  // Adding a Tool or WiP: first the choice (empty form or portal catalog), then the form, pre-filled when from the catalog
+  const [newChoice, setNewChoice] = useState<{ kind: 'TOOL' | 'IDEA'; phaseId?: string } | null>(null);
+  const [catalogChoice, setCatalogChoice] = useState<{ kind: 'TOOL' | 'IDEA'; phaseId?: string } | null>(null);
+  const [portalDraft, setPortalDraft] = useState<CatalogDraft | null>(null);
+  // Tool or WiP being linked to a portal solution (the catalog opens in link mode)
+  const [linkTarget, setLinkTarget] = useState<Item | null>(null);
+  // Portal solutions already copied to this map, shown with a badge in the catalog
+  const importedPortalIds = new Set(items.flatMap(i => (i.portalProjectId ? [i.portalProjectId] : [])));
+
+  const openForm = (kind: 'TOOL' | 'IDEA', phaseId?: string, draft: CatalogDraft | null = null) => {
+    setPortalDraft(draft);
+    if (kind === 'TOOL') {
+      setEditingTool(null);
+      setDefaultToolPhaseId(phaseId);
+      setToolModalOpen(true);
+    } else {
+      setEditingIdea(null);
+      setDefaultIdeaPhaseId(phaseId);
+      setIdeaModalOpen(true);
+    }
+  };
 
   const [phaseModalOpen, setPhaseModalOpen] = useState(false);
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null);
@@ -486,6 +511,30 @@ export default function App() {
     }
   };
 
+  const replaceItem = (updated: Item) => setItems(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+
+  // Updates a linked Tool or WiP from its solution now (the server copies the portal fields only)
+  const syncFromPortal = async (item: Item) => {
+    try {
+      const updated = await portalRequest<Item>(`/api/items/${item.id}/portal-sync`, { method: 'POST' });
+      replaceItem(updated);
+      showToast(`"${updated.title}" updated from the portal.`);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Stops following the portal; the card keeps the data it has
+  const unlinkFromPortal = async (item: Item) => {
+    try {
+      const updated = await portalRequest<Item>(`/api/items/${item.id}/portal-link`, { method: 'DELETE' });
+      replaceItem(updated);
+      showToast(`"${updated.title}" is no longer linked to the portal.`);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const handleDeleteItem = async (itemId: string) => {
     try {
       const res = await fetch(`/api/items/${itemId}`, { method: 'DELETE' });
@@ -672,16 +721,8 @@ export default function App() {
                 setTargetPhaseIndex(idx);
                 setPhaseModalOpen(true);
               }}
-              onAddTool={(phaseId) => {
-                setEditingTool(null);
-                setDefaultToolPhaseId(phaseId);
-                setToolModalOpen(true);
-              }}
-              onAddIdea={(phaseId) => {
-                setEditingIdea(null);
-                setDefaultIdeaPhaseId(phaseId);
-                setIdeaModalOpen(true);
-              }}
+              onAddTool={(phaseId) => setNewChoice({ kind: 'TOOL', phaseId })}
+              onAddIdea={(phaseId) => setNewChoice({ kind: 'IDEA', phaseId })}
               onAddNeed={(phaseId) => {
                 setEditingNeed(null);
                 setDefaultNeedPhaseId(phaseId);
@@ -700,16 +741,8 @@ export default function App() {
             items={items}
             onClose={() => setFocusedPhaseId(null)}
             onSelectItem={handleSelectItem}
-            onAddTool={(pid) => {
-              setEditingTool(null);
-              setDefaultToolPhaseId(pid);
-              setToolModalOpen(true);
-            }}
-            onAddIdea={(pid) => {
-              setEditingIdea(null);
-              setDefaultIdeaPhaseId(pid);
-              setIdeaModalOpen(true);
-            }}
+            onAddTool={(pid) => setNewChoice({ kind: 'TOOL', phaseId: pid })}
+            onAddIdea={(pid) => setNewChoice({ kind: 'IDEA', phaseId: pid })}
             onAddNeed={(pid) => {
               setEditingNeed(null);
               setDefaultNeedPhaseId(pid);
@@ -748,6 +781,9 @@ export default function App() {
             }}
             onDeleteItem={handleDeleteItem}
             onChangeType={handleChangeType}
+            onPortalLink={item => setLinkTarget(item)}
+            onPortalSync={syncFromPortal}
+            onPortalUnlink={unlinkFromPortal}
             onAddAttachment={handleAddAttachment}
             onDeleteAttachment={handleDeleteAttachment}
           />
@@ -764,16 +800,70 @@ export default function App() {
         canEdit={!readOnly}
       />
 
+      {/* Choice when adding a Tool or WiP */}
+      <NewItemChoice
+        kind={newChoice?.kind ?? null}
+        onClose={() => setNewChoice(null)}
+        onNewApplication={() => {
+          if (newChoice) openForm(newChoice.kind, newChoice.phaseId);
+          setNewChoice(null);
+        }}
+        onPortalCatalog={() => {
+          setCatalogChoice(newChoice);
+          setNewChoice(null);
+        }}
+      />
+
+      {/* Portal Catalog: pick a solution to start the Tool or WiP from */}
+      <PortalCatalogPicker
+        isOpen={catalogChoice !== null}
+        mode="create"
+        kind={catalogChoice?.kind ?? 'TOOL'}
+        practiceId={practiceId}
+        importedIds={importedPortalIds}
+        onClose={() => setCatalogChoice(null)}
+        onSelect={async card => {
+          if (!catalogChoice) return;
+          const draft = await portalRequest<CatalogDraft>(
+            `/api/portal/catalog/${encodeURIComponent(card.id)}?practice=${encodeURIComponent(practiceId)}&type=${catalogChoice.kind}`
+          );
+          setCatalogChoice(null);
+          openForm(catalogChoice.kind, catalogChoice.phaseId, draft);
+        }}
+      />
+
+      {/* Link of an existing Tool or WiP to a portal solution: its portal fields are updated from the solution */}
+      <PortalCatalogPicker
+        isOpen={linkTarget !== null}
+        mode="link"
+        kind={linkTarget?.type === 'IDEA' ? 'IDEA' : 'TOOL'}
+        practiceId={practiceId}
+        importedIds={importedPortalIds}
+        onClose={() => setLinkTarget(null)}
+        onSelect={async card => {
+          if (!linkTarget) return;
+          const updated = await portalRequest<Item>(
+            `/api/items/${linkTarget.id}/portal-link`,
+            jsonBody('POST', { portalProjectId: card.id })
+          );
+          replaceItem(updated);
+          setLinkTarget(null);
+          showToast(`"${updated.title}" linked to the portal.`);
+        }}
+      />
+
       {/* Tool Modal Form */}
       <ToolForm
         defaultOwner={defaultOwner}
         initialData={editingTool}
+        prefill={editingTool ? null : portalDraft}
         defaultPhaseId={defaultToolPhaseId}
         phases={phases}
         isOpen={toolModalOpen}
         onClose={() => {
           setToolModalOpen(false);
           setEditingTool(null);
+          setPortalDraft(null);
         }}
         onSubmit={handleSaveTool}
       />
@@ -782,12 +872,14 @@ export default function App() {
       <IdeaForm
         defaultOwner={defaultOwner}
         initialData={editingIdea}
+        prefill={editingIdea ? null : portalDraft}
         defaultPhaseId={defaultIdeaPhaseId}
         phases={phases}
         isOpen={ideaModalOpen}
         onClose={() => {
           setIdeaModalOpen(false);
           setEditingIdea(null);
+          setPortalDraft(null);
         }}
         onSubmit={handleSaveIdea}
       />
