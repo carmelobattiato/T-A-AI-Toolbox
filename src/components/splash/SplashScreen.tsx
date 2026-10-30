@@ -5,12 +5,17 @@ import { ADM_DEFINITION } from '../../utils/adm.ts';
 export const SPLASH_STORAGE_KEY = 'adm.splash.seen';
 const AUTO_CLOSE_MS = 9000;
 const EXIT_MS = 500;
+export const CHAMPION_EMAIL = 'carmelo.battiato@accenture.com';
 
 interface SplashScreenProps {
   onDone: () => void;
+  // New portal user: the welcome message stays until the user closes it
+  onboarding?: boolean;
+  // Name shown in the welcome message
+  userName?: string;
 }
 
-export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
+export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone, onboarding = false, userName }) => {
   const [leaving, setLeaving] = useState(false);
 
   const close = () => setLeaving(true);
@@ -22,21 +27,25 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
     return () => clearTimeout(timer);
   }, [leaving, onDone]);
 
+  // Closes by itself after a while, unless it shows the welcome message (that one waits for the user)
   useEffect(() => {
+    if (onboarding) return;
     const auto = setTimeout(close, AUTO_CLOSE_MS);
+    return () => clearTimeout(auto);
+  }, [onboarding]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') close();
     };
     window.addEventListener('keydown', onKey);
-    return () => {
-      clearTimeout(auto);
-      window.removeEventListener('keydown', onKey);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   return (
     <div
-      onClick={close}
+      // The welcome message is closed with its button only, so it cannot be dismissed by mistake
+      onClick={onboarding ? undefined : close}
       className={`fixed inset-0 z-[90] flex items-center justify-center p-6 cursor-pointer select-none transition-opacity ease-out ${
         leaving ? 'opacity-0' : 'opacity-100'
       }`}
@@ -45,7 +54,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
         background: 'radial-gradient(circle at 20% 15%, #6D28D9 0%, #4C1D95 38%, #1E1B4B 100%)',
       }}
       role="dialog"
-      aria-label="Introduction to ADM"
+      aria-label={onboarding ? 'Welcome to ADM' : 'Introduction to ADM'}
     >
       {/* Soft decorative glows */}
       <div className="pointer-events-none absolute -top-40 -right-32 h-[28rem] w-[28rem] rounded-full bg-fuchsia-500/20 blur-3xl" />
@@ -62,6 +71,25 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
         <h1 className="mt-3 text-5xl font-extrabold tracking-tight text-white sm:text-6xl">ADM Project Blueprint</h1>
         <div className="mx-auto mt-6 h-px w-24 bg-gradient-to-r from-transparent via-purple-300 to-transparent" />
 
+        {onboarding && (
+          <div className="mx-auto mt-6 max-w-xl rounded-2xl bg-white/10 px-5 py-4 text-left text-sm leading-relaxed text-white ring-1 ring-white/25 backdrop-blur">
+            <div className="mb-2 text-lg font-bold">Welcome, {userName || 'new user'}</div>
+            You are a new user: you have been assigned the <strong>viewer</strong> role. You can add{' '}
+            <strong>needs</strong>, but not tools or WiPs.
+            <div className="mt-3">
+              To request an editor account, email your reference champion or{' '}
+              <a
+                href={`mailto:${CHAMPION_EMAIL}`}
+                onClick={e => e.stopPropagation()}
+                className="font-semibold underline decoration-purple-300 underline-offset-2 hover:text-purple-100"
+              >
+                {CHAMPION_EMAIL}
+              </a>
+              .
+            </div>
+          </div>
+        )}
+
         <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-purple-50/90 sm:text-lg">{ADM_DEFINITION}</p>
 
         <button
@@ -72,14 +100,16 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
           }}
           className="mt-9 inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-bold text-purple-800 shadow-xl shadow-purple-950/40 transition hover:scale-105 cursor-pointer"
         >
-          Enter
+          {onboarding ? 'Got it' : 'Enter'}
           <ArrowRight className="h-4 w-4" />
         </button>
 
         {/* Time left before it closes by itself */}
-        <div className="mx-auto mt-8 h-0.5 w-40 overflow-hidden rounded-full bg-white/15">
-          <div className="h-full origin-left bg-white/70" style={{ animation: `splash-progress ${AUTO_CLOSE_MS}ms linear forwards` }} />
-        </div>
+        {!onboarding && (
+          <div className="mx-auto mt-8 h-0.5 w-40 overflow-hidden rounded-full bg-white/15">
+            <div className="h-full origin-left bg-white/70" style={{ animation: `splash-progress ${AUTO_CLOSE_MS}ms linear forwards` }} />
+          </div>
+        )}
       </div>
 
       <style>{`@keyframes splash-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }`}</style>

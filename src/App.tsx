@@ -15,6 +15,7 @@ import { AuditLogModal } from './components/modals/AuditLogModal.tsx';
 import { SettingsModal } from './components/modals/SettingsModal.tsx';
 import { LoginModal } from './components/modals/LoginModal.tsx';
 import { SplashScreen, SPLASH_STORAGE_KEY } from './components/splash/SplashScreen.tsx';
+import { AccessDenied } from './components/splash/AccessDenied.tsx';
 import { ProductTour, TOUR_STORAGE_KEY } from './components/tour/ProductTour.tsx';
 import { ChangePasswordModal } from './components/modals/ChangePasswordModal.tsx';
 import { TAIAssistant } from './components/chat/TAIAssistant.tsx';
@@ -39,7 +40,7 @@ interface Snapshot {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function App() {
-  const { user, isAdmin, canEdit, logout } = useAuth();
+  const { user, portalDenied, isAdmin, canEdit, logout, ackOnboarding } = useAuth();
   const [practices, setPractices] = useState<Practice[]>([]);
   const [practiceId, setPracticeId] = useState<string>(() => localStorage.getItem(PRACTICE_STORAGE_KEY) || DEFAULT_PRACTICE_ID);
   // Latest practice selection, so a slow response for the previous practice never overwrites the map
@@ -54,6 +55,11 @@ export default function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   // The ADM introduction is shown once per browser session, before everything else
   const [splashOpen, setSplashOpen] = useState(() => !sessionStorage.getItem(SPLASH_STORAGE_KEY));
+  const onboarding = Boolean(user?.onboarding);
+  // A new portal user gets the splash with the welcome message, even if the splash was already seen in this session
+  useEffect(() => {
+    if (onboarding) setSplashOpen(true);
+  }, [onboarding]);
   const [tourOpen, setTourOpen] = useState(false);
   // The tour opens by itself at most once per page load, even if "Don't show again" is unchecked
   const tourAutoShown = useRef(false);
@@ -830,11 +836,17 @@ export default function App() {
         }}
       />
 
+      {portalDenied && !user && <AccessDenied />}
+
       {splashOpen && (
         <SplashScreen
+          onboarding={onboarding}
+          userName={user?.displayName}
           onDone={() => {
             sessionStorage.setItem(SPLASH_STORAGE_KEY, '1');
             setSplashOpen(false);
+            // The welcome message is shown once
+            if (onboarding) void ackOnboarding();
           }}
         />
       )}

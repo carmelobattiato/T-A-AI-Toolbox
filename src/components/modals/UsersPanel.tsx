@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pencil, Trash2, UserPlus, ShieldCheck } from 'lucide-react';
+import { Pencil, Trash2, UserPlus, ShieldCheck, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AuthUser, Practice, UserRole } from '../../types/index.ts';
 import { useAuth } from '../../auth/AuthContext.tsx';
 
@@ -12,6 +12,8 @@ interface FormState {
   password: string;
   practices: string[];
 }
+
+const PAGE_SIZE = 10;
 
 const EMPTY_FORM: FormState = { id: null, username: '', displayName: '', role: 'editor', active: true, password: '', practices: [] };
 
@@ -27,6 +29,8 @@ export const UsersPanel: React.FC = () => {
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     const [usersRes, practicesRes] = await Promise.all([fetch('/api/users'), fetch('/api/practices')]);
@@ -44,6 +48,17 @@ export const UsersPanel: React.FC = () => {
 
   const practiceName = (id: string) => practices.find(p => p.id === id)?.name ?? id;
 
+  // Searchable text per user: name, username, role and the practices they can edit
+  const searchable = (u: AuthUser) =>
+    [u.displayName, u.username, u.role, u.role === 'admin' ? 'all practices' : u.practices.map(practiceName).join(' ')]
+      .join(' ')
+      .toLowerCase();
+  const term = query.trim().toLowerCase();
+  const filtered = term ? users.filter(u => searchable(u).includes(term)) : users;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageUsers = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form) return;
@@ -53,7 +68,7 @@ export const UsersPanel: React.FC = () => {
       const body: Record<string, unknown> = {
         displayName: form.displayName,
         role: form.role,
-        practices: form.practices,
+        practices: form.role === 'viewer' ? [] : form.practices,
         active: form.active,
       };
       if (form.password) body.password = form.password;
@@ -111,6 +126,25 @@ export const UsersPanel: React.FC = () => {
 
       {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
 
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={query}
+            onChange={e => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by name, username, role or practice"
+            className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+          />
+        </div>
+        <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+          {filtered.length} {filtered.length === 1 ? 'user' : 'users'}
+        </span>
+      </div>
+
       {form && (
         <form onSubmit={save} className="rounded-xl border border-purple-200 bg-purple-50/40 p-4 space-y-3">
           <h4 className="text-xs font-bold text-slate-800">{form.id ? `Edit ${form.username}` : 'New user'}</h4>
@@ -141,6 +175,7 @@ export const UsersPanel: React.FC = () => {
             <label className="block text-xs font-semibold text-slate-700">
               Role
               <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as UserRole })} className={inputClass}>
+                <option value="viewer">Viewer (can add needs only)</option>
                 <option value="editor">Editor (selected practices)</option>
                 <option value="admin">Admin (everything)</option>
               </select>
@@ -151,6 +186,8 @@ export const UsersPanel: React.FC = () => {
             <div className="text-xs font-semibold text-slate-700 mb-1.5">Editable practices</div>
             {form.role === 'admin' ? (
               <p className="text-xs text-slate-500">An admin can edit all practices.</p>
+            ) : form.role === 'viewer' ? (
+              <p className="text-xs text-slate-500">A viewer reads everything and can add needs, but cannot edit any practice. Promote to editor to choose practices.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {practices.map(p => (
@@ -189,7 +226,10 @@ export const UsersPanel: React.FC = () => {
       )}
 
       <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-        {users.map(u => (
+        {pageUsers.length === 0 && (
+          <p className="px-4 py-6 text-center text-xs text-slate-500">No users match "{query}".</p>
+        )}
+        {pageUsers.map(u => (
           <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -200,10 +240,17 @@ export const UsersPanel: React.FC = () => {
                     <ShieldCheck className="w-3 h-3" /> admin
                   </span>
                 )}
+                {u.role === 'viewer' && (
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">viewer</span>
+                )}
                 {!u.active && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">disabled</span>}
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
-                {u.role === 'admin' ? 'All practices' : u.practices.length ? u.practices.map(practiceName).join(', ') : 'No practices: read-only'}
+                {u.role === 'admin'
+                  ? 'All practices'
+                  : u.role === 'viewer'
+                    ? 'Viewer: can add needs only'
+                    : u.practices.length ? u.practices.map(practiceName).join(', ') : 'No practices: read-only'}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -224,6 +271,30 @@ export const UsersPanel: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between text-xs text-slate-600">
+          <button
+            type="button"
+            onClick={() => setPage(currentPage - 1)}
+            disabled={currentPage <= 1}
+            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-default"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Previous
+          </button>
+          <span className="font-semibold">
+            Page {currentPage} of {pageCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(currentPage + 1)}
+            disabled={currentPage >= pageCount}
+            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-default"
+          >
+            Next <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

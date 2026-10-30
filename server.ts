@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 8091;
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Increase payload limit for base64 screenshots/attachments (up to 10MB)

@@ -4,6 +4,14 @@
 
 ---
 
+## [0.11] — 2026-10-30
+
+- **Utenti (Settings):** la lista è impaginata a 10 utenti per pagina, con un campo di ricerca che filtra per nome, username, ruolo e practice. Con la ricerca la paginazione torna alla prima pagina.
+- **Accesso dal portale:** se il cookie del portale c'è ma non dà accesso (token non valido o scaduto, utente sconosciuto o disattivato), l'app mostra "Access not authorized": bisogna accedere dal portale https://portale.genai-garage.accenture.com tramite SSO e ricaricare la pagina. Senza cookie del portale l'app resta consultabile come prima.
+- **Benvenuto ai nuovi utenti:** il titolo dello splash è "Welcome, <nome>" con il nome dell'utente.
+- **Porta predefinita 8091:** `server.ts` (`npm run dev` / `npm start`) usa 8091 se `PORT` non è impostata (prima 3000). `start_local.sh` propone già 8091.
+---
+
 ## [0.10] — 2026-10-30
 
 - **Cambio di tipo degli elementi.** Dal pannello dettagli di un tool, WiP o esigenza si può passare da un tipo all'altro con il selettore Tool / WiP / Need in alto. Titolo, fasi, owner, tag, clienti, note e allegati restano; l'elemento viene riposizionato sulla mappa. Passando a Tool la priorità viene tolta (con conferma se era impostata). Il server accetta solo TOOL, IDEA o NEED e registra il cambio nel registro modifiche. Il selettore non compare per chi non può modificare la practice.

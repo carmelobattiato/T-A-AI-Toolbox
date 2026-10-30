@@ -2,13 +2,16 @@ import { Express, NextFunction, Request, Response } from 'express';
 import { AuthUser } from '../src/types/index.ts';
 import { userStore, UserError, SESSION_TTL_MS } from './userStore.ts';
 import { internalError } from './http.ts';
-import { portalUsername, LEGACY_OPT_OUT_COOKIE } from './portalAuth.ts';
+import { portalIdentity, portalAutoCreateEnabled, portalCookiePresent, LEGACY_OPT_OUT_COOKIE } from './portalAuth.ts';
+import { db } from './store.ts';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthUser;
+      // The portal cookie is there, but it does not give access (invalid token, unknown or disabled user)
+      portalDenied?: boolean;
     }
   }
 }
@@ -17,9 +20,12 @@ const COOKIE_NAME = 'adm_session';
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 
+// Viewers read everything and may propose needs (see create_need), but never change a practice
 export function canEdit(user: AuthUser | null | undefined, practiceId: string): boolean {
   if (!user || !user.active) return false;
-  return user.role === 'admin' || user.practices.includes(practiceId);
+  if (user.role === 'admin') return true;
+  if (user.role === 'viewer') return false;
+  return user.practices.includes(practiceId);
 }
 
 function readCookie(req: Request, name: string): string | undefined {
@@ -50,22 +56,41 @@ function clearSessionCookie(req: Request, res: Response) {
 }
 
 // Resolves the session cookie to req.user on every request; anonymous requests simply have no user
-// Local session first; without one, the portal cookie can sign the user in (unless they logged out)
+// Local session first; without one, a valid portal cookie signs the user in
 export async function attachUser(req: Request, res: Response, next: NextFunction) {
   req.user = userStore.userFromToken(readCookie(req, COOKIE_NAME)) ?? undefined;
   if (!req.user) {
     try {
-      const username = await portalUsername(req);
-      const user = username ? userStore.findActiveByUsername(username) : null;
+      const identity = await portalIdentity(req);
+      const user = identity ? portalUser(identity) : null;
       if (user) {
-        req.user = user;
+        // Portal users never have to change a password
+        req.user = { ...user, mustChangePassword: false };
         setSessionCookie(req, res, userStore.signToken(user, true));
       }
     } catch (err) {
       console.error('Portal autologin failed:', err);
     }
   }
+  req.portalDenied = !req.user && portalCookiePresent(req);
   next();
+}
+
+// Existing user → signed in (disabled users never). Unknown name → created as viewer, if auto-creation is on.
+function portalUser(identity: { username: string; displayName: string }): AuthUser | null {
+  const existing = userStore.findAnyByUsername(identity.username);
+  if (existing) return existing.active ? existing : null;
+  if (!portalAutoCreateEnabled()) return null;
+  try {
+    const { user, created } = userStore.createPortalUser(identity.username, identity.displayName);
+    if (created) {
+      console.log(`Portal login: new user "${user.username}" created with role viewer`);
+      db.addAuditLog('portal', 'CREATE', 'USER', user.id, { username: user.username, role: 'viewer', source: 'portal' });
+    }
+    return user;
+  } catch {
+    return null; // not a valid username: nothing is created
+  }
 }
 
 // Sends 401/403 and returns false when the caller may not write on the practice
@@ -201,9 +226,19 @@ export function registerAuthRoutes(app: Express) {
     res.json({ success: true });
   });
 
+  // The welcome message of a new portal user has been shown: do not show it again
+  app.post('/api/auth/ack-onboarding', (req: Request, res: Response) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Sign in to continue' });
+      return;
+    }
+    userStore.ackOnboarding(req.user.id);
+    res.json({ success: true });
+  });
+
   app.get('/api/auth/me', (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ user: req.user ?? null });
+    res.json({ user: req.user ?? null, portalDenied: Boolean(req.portalDenied) });
   });
 
   app.post('/api/auth/password', (req: Request, res: Response) => {

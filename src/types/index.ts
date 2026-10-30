@@ -9,7 +9,7 @@ export interface Practice {
   createdBy?: string;
 }
 
-export type UserRole = 'admin' | 'editor';
+export type UserRole = 'admin' | 'editor' | 'viewer';
 
 // Public view of a user (never includes password data)
 export interface AuthUser {
@@ -20,6 +20,8 @@ export interface AuthUser {
   practices: string[];
   active: boolean;
   mustChangePassword: boolean;
+  // True until the user has seen the welcome message (new users created from the portal)
+  onboarding?: boolean;
 }
 
 export interface Phase {

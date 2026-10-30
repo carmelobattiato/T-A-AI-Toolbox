@@ -3,9 +3,12 @@
 # nel cookie "portal_session" e mostra se l'autologin scatta. Non legge utenti e non avvia nulla.
 #
 # Uso:   ./test.sh nome.cognome [url]        (url di default: http://localhost:8091)
+#        ./test.sh pippo.paperino            un nome qualsiasi: se non esiste, l'app lo crea come viewer
+#                                            (solo lettura + esigenze) e nello splash compare il messaggio di benvenuto
 # Serve: applicazione già avviata con PORTAL_AUTOLOGIN_INSECURE=1 (token di test non firmato davvero),
 #        oppure con la chiave pubblica del portale e un token firmato con la chiave privata corrispondente
 #        (PORTAL_TEST_PRIVATE_KEY=percorso/chiave.pem ./test.sh nome.cognome).
+# Nota:  il test crea davvero l'utente nell'applicazione a cui punta: eliminalo dal tab "Users & roles" se non serve.
 set -euo pipefail
 
 NAME_ARG="${1:-}"
@@ -60,10 +63,21 @@ except Exception:
     u = None
 print((u['username'] + ' (ruolo: ' + u['role'] + ')') if u else '')
 ")
+NEW_ROLE=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    u = json.load(sys.stdin).get('user')
+except Exception:
+    u = None
+print(('onboarding' if u and u.get('onboarding') else '') + ('|' + u['role'] if u else ''))
+")
 
 echo "---------------------------------------------------------"
 if [ -n "$USER_JSON" ]; then
     echo "✅ AUTOLOGIN: l'applicazione ti ha loggato come $USER_JSON"
+    case "$NEW_ROLE" in
+        onboarding*) echo "🆕 Benvenuto: utente nuovo (o messaggio non ancora visto). Lo splash mostrerà il messaggio viewer." ;;
+    esac
 else
     echo "⛔ NESSUN AUTOLOGIN per '$NAME'. Possibili motivi:"
     echo "   • l'utente non è presente (o non è attivo) nell'applicazione"

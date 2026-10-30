@@ -227,7 +227,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onMouseLeave={() => setUserMenuOpen(false)}
               >
                 <div className="px-2.5 py-1.5 text-[10px] text-slate-400">
-                  @{user.username} · {user.role === 'admin' ? 'admin' : 'editor'}
+                  @{user.username} · {user.role}
                 </div>
                 <button
                   type="button"

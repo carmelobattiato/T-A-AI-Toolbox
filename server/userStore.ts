@@ -16,6 +16,24 @@ interface StoredUser extends AuthUser {
   passwordHash: string;
   tokenVersion: number;
   createdAt: string;
+  onboardingPending?: boolean;
+}
+
+const ROLES: UserRole[] = ['admin', 'editor', 'viewer'];
+
+// Anything not a known role becomes the given fallback
+function parseRole(value: unknown, fallback: UserRole): UserRole {
+  return ROLES.includes(value as UserRole) ? (value as UserRole) : fallback;
+}
+
+// "pippo.paperino" → "Pippo Paperino"
+export function displayNameFromUsername(username: string): string {
+  return username
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+    .slice(0, 80) || username;
 }
 
 interface UsersFile {
@@ -57,6 +75,7 @@ function publicUser(u: StoredUser): AuthUser {
     practices: [...u.practices],
     active: u.active,
     mustChangePassword: u.mustChangePassword,
+    onboarding: Boolean(u.onboardingPending),
   };
 }
 
@@ -174,9 +193,54 @@ class UserStore {
 
   // Active user by username, ignoring case; never creates anybody
   findActiveByUsername(username: string): AuthUser | null {
-    const name = username.trim().toLowerCase();
-    const user = this.file.users.find(u => u.username.toLowerCase() === name);
+    const user = this.findStoredByUsername(username);
     return user && user.active ? publicUser(user) : null;
+  }
+
+  // Any user by username (active or not), ignoring case
+  findAnyByUsername(username: string): AuthUser | null {
+    const user = this.findStoredByUsername(username);
+    return user ? publicUser(user) : null;
+  }
+
+  private findStoredByUsername(username: string): StoredUser | undefined {
+    const name = username.trim().toLowerCase();
+    return this.file.users.find(u => u.username.toLowerCase() === name);
+  }
+
+  // New user from a portal login: viewer role, no practice, a random password nobody knows (an admin can set one).
+  // Returns the existing user when the name is already there, so repeated or parallel logins create one account.
+  createPortalUser(username: string, displayName: string): { user: AuthUser; created: boolean } {
+    const existing = this.findAnyByUsername(username);
+    if (existing) return { user: existing, created: false };
+    if (!USERNAME_RE.test(username)) throw new UserError('Invalid username from the portal');
+    const user: StoredUser = {
+      id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      username,
+      displayName: displayName || username,
+      role: 'viewer',
+      practices: [],
+      active: true,
+      mustChangePassword: false,
+      passwordHash: hashPassword(crypto.randomBytes(32).toString('hex')),
+      tokenVersion: 1,
+      createdAt: new Date().toISOString(),
+      onboardingPending: true,
+    };
+    this.file.users.push(user);
+    this.persist();
+    return { user: publicUser(user), created: true };
+  }
+
+  // The welcome message has been seen: it is not shown again
+  ackOnboarding(id: string): boolean {
+    const user = this.find(id);
+    if (!user) return false;
+    if (user.onboardingPending) {
+      user.onboardingPending = false;
+      this.persist();
+    }
+    return true;
   }
 
   verifyLogin(username: unknown, password: unknown): AuthUser | null {
@@ -215,7 +279,7 @@ class UserStore {
     if (this.file.users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
       throw new UserError('Username already in use', 409);
     }
-    const role: UserRole = input.role === 'admin' ? 'admin' : 'editor';
+    const role = parseRole(input.role, 'editor');
     const now = new Date().toISOString();
     const user: StoredUser = {
       id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -248,7 +312,7 @@ class UserStore {
     const user = this.find(id);
     if (!user) return null;
 
-    const nextRole: UserRole = input.role === undefined ? user.role : input.role === 'admin' ? 'admin' : 'editor';
+    const nextRole: UserRole = input.role === undefined ? user.role : parseRole(input.role, 'editor');
     const nextActive = typeof input.active === 'boolean' ? input.active : user.active;
     const losesAdmin = user.role === 'admin' && user.active && (nextRole !== 'admin' || !nextActive);
     if (losesAdmin && this.activeAdmins() <= 1) {

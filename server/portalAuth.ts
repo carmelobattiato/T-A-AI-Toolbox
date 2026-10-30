@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Request } from 'express';
+import { displayNameFromUsername } from './userStore.ts';
 
 // Single sign-on from the portal: the portal links to this tool and passes its session cookie
 // (a JWT). If the user named in it exists here, they are signed in without a login form.
@@ -71,8 +72,24 @@ function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-// The local username the portal cookie points to, or null (no cookie, invalid token, unknown user).
-export async function portalUsername(req: Request): Promise<string | null> {
+export interface PortalIdentity {
+  username: string;
+  displayName: string;
+}
+
+// Whether the request carries a portal cookie at all (valid or not)
+export function portalCookiePresent(req: Request): boolean {
+  return Boolean(readCookie(req, process.env.PORTAL_COOKIE_NAME || DEFAULT_COOKIE));
+}
+
+// New users are created from portal logins unless PORTAL_AUTOCREATE=0
+export function portalAutoCreateEnabled(): boolean {
+  return process.env.PORTAL_AUTOCREATE !== '0';
+}
+
+// Who the valid portal cookie belongs to (name, username in lower case), or null when there is no cookie,
+// the token is invalid or expired, or it carries no name. Whether that user exists is decided by the caller.
+export async function portalIdentity(req: Request): Promise<PortalIdentity | null> {
   const cookieName = process.env.PORTAL_COOKIE_NAME || DEFAULT_COOKIE;
   const token = readCookie(req, cookieName);
   if (!token) return null;
@@ -106,5 +123,7 @@ export async function portalUsername(req: Request): Promise<string | null> {
     .find(v => typeof v === 'string' && v.trim()) as string | undefined;
   if (!raw) return null;
   // email style ("carmelo.battiato@accenture.com") → local part, matched to the username
-  return raw.trim().toLowerCase().split('@')[0] || null;
+  const username = raw.trim().toLowerCase().split('@')[0];
+  if (!username) return null;
+  return { username, displayName: displayNameFromUsername(username) };
 }
