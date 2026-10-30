@@ -11,8 +11,9 @@ WORKDIR /app
 # Copy dependency manifests
 COPY package*.json ./
 
-# Install production dependencies and tsx for execution
-RUN npm ci
+# Install production dependencies only (tsx is in dependencies for the CMD below;
+# typescript and the other devDependencies are left out of the image)
+RUN npm ci --omit=dev
 
 # Copy server code and required shared type modules
 COPY tsconfig.json ./
