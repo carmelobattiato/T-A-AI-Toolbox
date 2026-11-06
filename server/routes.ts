@@ -36,7 +36,7 @@ export function registerApiRoutes(app: Express) {
 
   app.post('/api/practices', requireAdmin, (req: Request, res: Response) => {
     try {
-      res.status(201).json(db.createPractice(req.body?.name, getUser(req)));
+      res.status(201).json(db.createPractice(req.body?.name, req.body?.description, req.body?.icon, getUser(req)));
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -44,7 +44,11 @@ export function registerApiRoutes(app: Express) {
 
   app.patch('/api/practices/:id', requireAdmin, (req: Request, res: Response) => {
     try {
-      const practice = db.renamePractice(req.params.id, req.body?.name, getUser(req));
+      const practice = db.updatePractice(
+        req.params.id,
+        { name: req.body?.name, description: req.body?.description, icon: req.body?.icon },
+        getUser(req),
+      );
       if (!practice) {
         res.status(404).json({ error: 'Practice not found' });
         return;

@@ -168,8 +168,13 @@ const DEFAULT_PHASES: Phase[] = ([
 ] as Omit<Phase, 'practiceId'>[]).map(p => ({ ...p, practiceId: DEFAULT_PRACTICE_ID }));
 
 const DEFAULT_PRACTICES: Practice[] = [
-  { id: DEFAULT_PRACTICE_ID, name: 'T&A', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+  { id: DEFAULT_PRACTICE_ID, name: 'T&A', description: '', icon: 'layers', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
 ];
+
+// Shown to users when they pick a default practice: plain text, short
+function cleanPracticeDescription(value: unknown): string {
+  return typeof value === 'string' ? value.trim().slice(0, 200) : '';
+}
 
 function randomSuffix(len = 5): string {
   return Math.random().toString(36).substring(2, 2 + len);
@@ -512,6 +517,8 @@ class DatabaseStore {
           parsed.items.forEach(renameLegacyKey);
           (parsed.dashboardTiles ?? []).forEach(renameLegacyKey);
           parsed.practices ??= DEFAULT_PRACTICES.map(p => ({ ...p }));
+          // Practices created before descriptions existed
+          for (const practice of parsed.practices) practice.description ??= '';
           for (const phase of parsed.phases) phase.practiceId ??= DEFAULT_PRACTICE_ID;
           for (const item of parsed.items) {
             item.practiceId ??= DEFAULT_PRACTICE_ID;
@@ -578,9 +585,11 @@ class DatabaseStore {
     return this.getPractices().find(p => p.id === id);
   }
 
-  createPractice(rawName: unknown, user = 'local.user'): Practice {
+  createPractice(rawName: unknown, rawDescription: unknown, rawIcon: unknown, user = 'local.user'): Practice {
     const name = typeof rawName === 'string' ? rawName.trim().slice(0, 60) : '';
     if (!name) throw new Error('Practice name is required');
+    const description = cleanPracticeDescription(rawDescription);
+    if (!description) throw new Error('Practice description is required');
     if (this.getPractices().some(p => p.name.toLowerCase() === name.toLowerCase())) {
       throw new Error('A practice with this name already exists');
     }
@@ -588,7 +597,7 @@ class DatabaseStore {
     while (this.getPractice(id)) id = `${slugify(name) || 'practice'}-${randomSuffix(3)}`;
 
     const now = new Date().toISOString();
-    const practice: Practice = { id, name, createdAt: now, createdBy: user };
+    const practice: Practice = { id, name, description, icon: resolveIcon(rawIcon, null) ?? null, createdAt: now, createdBy: user };
     this.data.practices!.push(practice);
     // Every new practice starts from one editable phase
     this.data.phases.push({
@@ -603,21 +612,41 @@ class DatabaseStore {
       createdAt: now,
       updatedAt: now,
     });
-    this.addAuditLog(user, 'CREATE', 'PRACTICE', id, { name }, id);
+    this.addAuditLog(user, 'CREATE', 'PRACTICE', id, { name, description }, id);
     this.persist();
     return practice;
   }
 
-  renamePractice(id: string, rawName: unknown, user = 'local.user'): Practice | null {
+  // Name and/or description; a field left undefined is not changed
+  updatePractice(
+    id: string,
+    input: { name?: unknown; description?: unknown; icon?: unknown },
+    user = 'local.user',
+  ): Practice | null {
     const practice = this.data.practices?.find(p => p.id === id);
     if (!practice) return null;
-    const name = typeof rawName === 'string' ? rawName.trim().slice(0, 60) : '';
-    if (!name) throw new Error('Practice name is required');
-    if (this.getPractices().some(p => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error('A practice with this name already exists');
+    const changes: Record<string, string> = {};
+    if (input.name !== undefined) {
+      const name = typeof input.name === 'string' ? input.name.trim().slice(0, 60) : '';
+      if (!name) throw new Error('Practice name is required');
+      if (this.getPractices().some(p => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) {
+        throw new Error('A practice with this name already exists');
+      }
+      practice.name = name;
+      changes.name = name;
     }
-    practice.name = name;
-    this.addAuditLog(user, 'UPDATE', 'PRACTICE', id, { name }, id);
+    if (input.description !== undefined) {
+      const description = cleanPracticeDescription(input.description);
+      if (!description) throw new Error('Practice description is required');
+      practice.description = description;
+      changes.description = description;
+    }
+    // null clears the icon (back to default); an unknown key keeps the current one
+    if ('icon' in input) {
+      practice.icon = resolveIcon(input.icon, practice.icon) ?? null;
+      changes.icon = practice.icon ?? 'default';
+    }
+    this.addAuditLog(user, 'UPDATE', 'PRACTICE', id, changes, id);
     this.persist();
     return practice;
   }

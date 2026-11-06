@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Layers, Network, SlidersHorizontal, LayoutDashboard, Sparkles, X, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Kanban, Layers, Network, SlidersHorizontal, LayoutDashboard, Sparkles, X, Check } from 'lucide-react';
 
 export const TOUR_STORAGE_KEY = 'adm.tour.v1.dismissed';
 
-type TourView = 'map' | 'dashboard';
+type TourView = 'map' | 'dashboard' | 'kanban';
 
 interface TourStep {
   // Value of the data-tour attribute of the element to focus
@@ -72,6 +72,23 @@ const STEPS: TourStep[] = [
       </>
     ),
     view: 'dashboard',
+  },
+  {
+    // Highlights the view switch at the top, where the Kanban button is
+    target: 'views',
+    title: 'The Kanban board',
+    icon: <Kanban className="w-5 h-5" />,
+    accent: 'from-blue-600 to-purple-600',
+    body: (
+      <>
+        Press <strong className="text-slate-800">Kanban</strong> at the top, next to Map and Dashboard. Tools, WiPs and Needs in three columns, each card with its process, progress or priority. Each column can be filtered by{' '}
+        <strong className="text-slate-800">process</strong> and sorted: Tools by efficiency, WiPs by completion, Needs by priority.
+        <span className="mt-2 block text-slate-500">
+          <strong className="text-slate-700">Drag a card to another column</strong> to change its kind (Tool, WiP or Need). <strong className="text-slate-700">Details</strong> opens the full card on the side.
+        </span>
+      </>
+    ),
+    view: 'kanban',
   },
   {
     target: 'assistant',

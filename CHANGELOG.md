@@ -4,6 +4,45 @@
 
 ---
 
+## [0.14] — 2026-11-06
+
+- **Splash uguale per tutti.** La splash ha lo stesso aspetto con o senza benvenuto. Al primo accesso (nessuna practice di default) compare sotto la descrizione il benvenuto con l'elenco delle practice e la loro descrizione; "Got it" resta bloccato finché non si sceglie una practice. Dal secondo accesso la splash mostra "Enter" con la barra di avanzamento, che ora si può mettere in pausa (pulsante, puntatore sopra la scheda o barra spaziatrice) per rileggere con calma.
+
+- **Practice di default.** Ogni utente ha una practice di default, scelta al primo accesso e aperta a ogni login. Si cambia dalla voce "Default practice" del menu utente. Un utente senza scelta vede la richiesta alla prima apertura.
+
+- **Descrizione delle practice.** Creando una practice (dalla selezione practice o da Settings > Practice) la descrizione è obbligatoria: è quella mostrata agli utenti quando scelgono la practice. Le practice già esistenti senza descrizione si completano con "Rename" in Settings > Practice.
+
+- **Selezione practice a tile.** Splash e "Default practice" mostrano le practice come tile con nome e descrizione breve (massimo 200 caratteri), in una griglia a scorrimento verticale con campo di ricerca per nome e descrizione. Il modale è più largo, la splash scorre su schermi bassi.
+
+- **Testo della splash.** Spiega a cosa serve lo strumento: la mappa condivisa di come si lavora, con i Tool che coprono le fasi, i WiP in corso e le esigenze aperte.
+
+- **Splash ridisegnata.** Sfondo chiaro, logo e titolo, selezione della practice a tile con icona, descrizione e ricerca, pannello "What you'll find" e riepilogo con numero di practice, fasi, Tool, WiP ed esigenze aperte della practice evidenziata. Chi ha già una practice di default vede le tile solo come anteprima: la scelta si cambia dal menu utente.
+
+- **Icona delle practice.** Ogni practice ha un'icona scelta tra quelle dei form (default: livelli). Si sceglie in creazione (selettore practice e Settings > Practice) e si modifica in Settings > Practice. Icone assegnate: T&A, NAID - Developer, Operations - Sogei, Gare HPS.
+
+- **Cambio password solo per admin.** La voce "Change password" del menu utente e `POST /api/auth/password` sono riservati agli amministratori; gli altri utenti non possono cambiare la propria password dall'app.
+
+- **Splash su richiesta (admin).** Accanto al punto interrogativo nell'header, un pulsante riapre la splash screen.
+
+- **Nuova fase.** Rimosso il pulsante "New phase" dall'header: le fasi si aggiungono dal "+" sulla mappa.
+
+- **Mappa.** Rimossa la scritta "React Flow" in basso a destra.
+
+- **Vista Kanban.** Nuova vista accanto a Map e Dashboard: colonne Tools, WiP ed Esigenze con le schede dei elementi della practice (fasi, avanzamento dei WiP, efficienza dei Tool, priorità delle Need, owner). Un clic apre l'elemento sulla mappa. Sola lettura: nessuna modifica ai dati.
+
+- **Kanban: colonne a tutta larghezza, filtri e ordinamento.** Ogni colonna ha il filtro per process (fase) e l'ordinamento: Tool per efficienza, WiP per completamento, Need per priorità (P-1 prima), con alternativa per nome.
+
+- **Kanban: spostamento tra colonne.** Trascinando una scheda in un'altra colonna se ne cambia il tipo (Tool, WiP o Need), con la stessa conferma della priorità del pannello dettagli. Sola lettura per chi non può modificare la practice.
+- **Tour: vista Kanban.** Nuovo passo del tour iniziale che presenta la vista Kanban.
+
+- **Kanban: Details e etichette.** Un clic sulla scheda non apre più il pannello: il pulsante "Details" apre la scheda completa restando nella vista Kanban. Le percentuali e le priorità hanno l'etichetta ("Completion", "Efficiency", "Priority P-n").
+
+- **Tour: pulsante Kanban evidenziato.** Il passo Kanban del tour illumina il selettore di vista in alto, così si vede dove premere.
+
+- **Endpoint.** `PATCH /api/auth/default-practice` imposta la practice di default; `POST /api/practices` e `PATCH /api/practices/:id` accettano `description`. Rimosso `POST /api/auth/ack-onboarding`.
+
+---
+
 ## [0.13] — 2026-10-30
 
 - **Popup dei nodi sopra gli altri.** Il nodo sotto il mouse passa in primo piano (z-index), così il popup di Tool, Need e WiP non finisce più sotto i nodi vicini.

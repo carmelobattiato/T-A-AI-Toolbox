@@ -3,15 +3,17 @@ import { FilterState } from '../../types/index.ts';
 import {
   Search,
   X,
-  Plus,
   History,
+  Presentation,
   Settings,
   Sparkles,
   Map as MapIcon,
   LayoutDashboard,
+  Kanban,
   LogIn,
   LogOut,
   KeyRound,
+  Star,
   Eye,
   HelpCircle,
 } from 'lucide-react';
@@ -19,21 +21,20 @@ import { AuthUser, Practice } from '../../types/index.ts';
 import { PracticeSwitcher } from './PracticeSwitcher.tsx';
 import { ADM_DEFINITION } from '../../utils/adm.ts';
 
-export type AppView = 'map' | 'dashboard';
+export type AppView = 'map' | 'dashboard' | 'kanban';
 
 interface HeaderProps {
   view: AppView;
   onViewChange: (view: AppView) => void;
   filters: FilterState;
   onFilterChange: (filters: FilterState) => void;
-  onNewPhase: () => void;
   onOpenAuditLog: () => void;
   onOpenSettings: () => void;
   isCustomAiActive?: boolean;
   practices: Practice[];
   practiceId: string;
   onSelectPractice: (practiceId: string) => void;
-  onCreatePractice: (name: string) => Promise<string | null>;
+  onCreatePractice: (name: string, description: string, icon: string | null) => Promise<string | null>;
   user: AuthUser | null;
   isAdmin: boolean;
   // False for anonymous visitors and users without rights on the current practice
@@ -41,7 +42,10 @@ interface HeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   onChangePassword: () => void;
+  onDefaultPractice: () => void;
   onStartTour: () => void;
+  // Admins only: shows the splash screen again
+  onShowSplash: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -49,7 +53,6 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   filters,
   onFilterChange,
-  onNewPhase,
   onOpenAuditLog,
   onOpenSettings,
   isCustomAiActive = false,
@@ -63,7 +66,9 @@ export const Header: React.FC<HeaderProps> = ({
   onLogin,
   onLogout,
   onChangePassword,
+  onDefaultPractice,
   onStartTour,
+  onShowSplash,
 }) => {
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   return (
@@ -84,7 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
             Collaborative map by practice
           </span>
           <span className="text-[9px] text-slate-400 font-medium hidden sm:block">
-            developed by Carmelo Battiato - V.1.1.0
+            developed by Carmelo Battiato - V.1.2.0
           </span>
         </div>
 
@@ -132,11 +137,12 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Global Actions Zone (No individual user profile - General app for all) */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* View switch: Map / Dashboard */}
-        <div className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-semibold">
+        {/* View switch: Map / Dashboard / Kanban */}
+        <div data-tour="views" className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-semibold">
           {([
             { id: 'map', label: 'Map', Icon: MapIcon },
             { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+            { id: 'kanban', label: 'Kanban', Icon: Kanban },
           ] as const).map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -161,6 +167,18 @@ export const Header: React.FC<HeaderProps> = ({
           <HelpCircle className="w-4 h-4" />
         </button>
 
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={onShowSplash}
+            title="Show the introduction splash screen"
+            aria-label="Show the introduction splash screen"
+            className="p-2 rounded-lg text-slate-500 hover:text-purple-700 hover:bg-purple-50 transition-colors cursor-pointer"
+          >
+            <Presentation className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Settings (admins only): AI engine, users, practices */}
         {isAdmin && <button
           type="button"
@@ -176,17 +194,6 @@ export const Header: React.FC<HeaderProps> = ({
               className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"
             />
           )}
-        </button>}
-
-        {/* Add Phase Button */}
-        {canEditPractice && <button
-          type="button"
-          onClick={onNewPhase}
-          className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold transition-all cursor-pointer"
-          title="Add a new process phase"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>New phase</span>
         </button>}
 
         {/* Audit Log Button */}
@@ -229,12 +236,22 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="px-2.5 py-1.5 text-[10px] text-slate-400">
                   @{user.username} · {user.role}
                 </div>
+                {/* Only administrators change their password here; other users have it set for them */}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => { setUserMenuOpen(false); onChangePassword(); }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" /> Change password
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => { setUserMenuOpen(false); onChangePassword(); }}
+                  onClick={() => { setUserMenuOpen(false); onDefaultPractice(); }}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
-                  <KeyRound className="w-3.5 h-3.5" /> Change password
+                  <Star className="w-3.5 h-3.5" /> Default practice
                 </button>
                 <button
                   type="button"

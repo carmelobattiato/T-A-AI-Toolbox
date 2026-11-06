@@ -552,6 +552,8 @@ const GraphInner: React.FC<ToolboxGraphProps> = ({
     <div className="w-full h-full relative select-none bg-[#FAFBFD]">
       {/* Main React Flow Canvas */}
       <ReactFlow
+        // Hides the "React Flow" credit in the corner of the map
+        proOptions={{ hideAttribution: true }}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}

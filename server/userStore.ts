@@ -16,6 +16,7 @@ interface StoredUser extends AuthUser {
   passwordHash: string;
   tokenVersion: number;
   createdAt: string;
+  // Legacy flag (welcome shown once); replaced by defaultPracticeId, dropped on load
   onboardingPending?: boolean;
 }
 
@@ -75,7 +76,9 @@ function publicUser(u: StoredUser): AuthUser {
     practices: [...u.practices],
     active: u.active,
     mustChangePassword: u.mustChangePassword,
-    onboarding: Boolean(u.onboardingPending),
+    defaultPracticeId: u.defaultPracticeId ?? null,
+    // Until a default practice is chosen, the splash shows the welcome and the choice
+    onboarding: !u.defaultPracticeId,
   };
 }
 
@@ -119,6 +122,8 @@ class UserStore {
               delete u.pillars;
             }
             u.practices ??= [];
+            delete u.onboardingPending;
+            u.defaultPracticeId ??= null;
           }
           return parsed;
         }
@@ -225,22 +230,23 @@ class UserStore {
       passwordHash: hashPassword(crypto.randomBytes(32).toString('hex')),
       tokenVersion: 1,
       createdAt: new Date().toISOString(),
-      onboardingPending: true,
+      defaultPracticeId: null,
     };
     this.file.users.push(user);
     this.persist();
     return { user: publicUser(user), created: true };
   }
 
-  // The welcome message has been seen: it is not shown again
-  ackOnboarding(id: string): boolean {
+  // The user's default practice (chosen at first login, changed in their settings); must be an existing practice
+  setDefaultPractice(id: string, practiceId: unknown, validPracticeIds: string[]): AuthUser {
     const user = this.find(id);
-    if (!user) return false;
-    if (user.onboardingPending) {
-      user.onboardingPending = false;
-      this.persist();
+    if (!user) throw new UserError('Sign in to continue', 401);
+    if (typeof practiceId !== 'string' || !validPracticeIds.includes(practiceId)) {
+      throw new UserError('Choose an existing practice');
     }
-    return true;
+    user.defaultPracticeId = practiceId;
+    this.persist();
+    return publicUser(user);
   }
 
   verifyLogin(username: unknown, password: unknown): AuthUser | null {
@@ -361,12 +367,16 @@ class UserStore {
     return publicUser(user);
   }
 
-  // A deleted practice must not stay in anyone's permissions
+  // A deleted practice must not stay in anyone's permissions or defaults (the default is asked again)
   removePractice(practiceId: string) {
     let changed = false;
     for (const user of this.file.users) {
       if (user.practices.includes(practiceId)) {
         user.practices = user.practices.filter(p => p !== practiceId);
+        changed = true;
+      }
+      if (user.defaultPracticeId === practiceId) {
+        user.defaultPracticeId = null;
         changed = true;
       }
     }

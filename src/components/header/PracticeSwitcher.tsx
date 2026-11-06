@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Layers, Plus } from 'lucide-react';
 import { Practice } from '../../types/index.ts';
+import { IconKey } from '../../utils/iconKeys.ts';
+import { IconPicker } from '../forms/IconPicker.tsx';
+import { PracticeIcon } from '../practices/PracticeIcon.tsx';
 
 interface PracticeSwitcherProps {
   practices: Practice[];
@@ -9,13 +12,15 @@ interface PracticeSwitcherProps {
   // Only for users allowed to add practices (admins)
   canCreate: boolean;
   // Resolves to an error message, or null when the practice was created
-  onCreate: (name: string) => Promise<string | null>;
+  onCreate: (name: string, description: string, icon: string | null) => Promise<string | null>;
 }
 
 export const PracticeSwitcher: React.FC<PracticeSwitcherProps> = ({ practices, practiceId, onSelectPractice, canCreate, onCreate }) => {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [icon, setIcon] = useState<IconKey | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -35,14 +40,16 @@ export const PracticeSwitcher: React.FC<PracticeSwitcherProps> = ({ practices, p
     setOpen(false);
     setAdding(false);
     setName('');
+    setDescription('');
+    setIcon(null);
     setError('');
   };
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !description.trim()) return;
     setBusy(true);
-    const err = await onCreate(name.trim());
+    const err = await onCreate(name.trim(), description.trim(), icon);
     setBusy(false);
     if (err) setError(err);
     else close();
@@ -77,7 +84,10 @@ export const PracticeSwitcher: React.FC<PracticeSwitcherProps> = ({ practices, p
                 p.id === practiceId ? 'bg-purple-50 text-purple-800' : 'text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <span className="truncate">{p.name}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <PracticeIcon icon={p.icon} className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{p.name}</span>
+              </span>
               {p.id === practiceId && <Check className="h-3.5 w-3.5 shrink-0" />}
             </button>
           ))}
@@ -96,12 +106,24 @@ export const PracticeSwitcher: React.FC<PracticeSwitcherProps> = ({ practices, p
                     placeholder="New practice name"
                     className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                   />
+                  <IconPicker value={icon} onChange={setIcon} compact />
+                  <textarea
+                    value={description}
+                    onChange={e => {
+                      setDescription(e.target.value);
+                      setError('');
+                    }}
+                    rows={3}
+                    maxLength={200}
+                    placeholder="Description (shown when users choose their practice)"
+                    className="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                  />
                   {error && <p className="text-[10px] font-semibold text-red-600">{error}</p>}
                   <div className="flex justify-end gap-1.5">
-                    <button type="button" onClick={() => { setAdding(false); setName(''); setError(''); }} className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 rounded-md cursor-pointer">
+                    <button type="button" onClick={() => { setAdding(false); setName(''); setDescription(''); setIcon(null); setError(''); }} className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 rounded-md cursor-pointer">
                       Cancel
                     </button>
-                    <button type="submit" disabled={busy || !name.trim()} className="px-2.5 py-1 text-[11px] font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-md cursor-pointer disabled:opacity-50">
+                    <button type="submit" disabled={busy || !name.trim() || !description.trim()} className="px-2.5 py-1 text-[11px] font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-md cursor-pointer disabled:opacity-50">
                       Create
                     </button>
                   </div>

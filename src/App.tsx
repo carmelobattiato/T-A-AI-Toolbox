@@ -21,6 +21,8 @@ import { NewItemChoice } from './components/modals/NewItemChoice.tsx';
 import { PortalCatalogPicker } from './components/modals/PortalCatalogPicker.tsx';
 import { ProductTour, TOUR_STORAGE_KEY } from './components/tour/ProductTour.tsx';
 import { ChangePasswordModal } from './components/modals/ChangePasswordModal.tsx';
+import { KanbanBoard } from './components/kanban/KanbanBoard.tsx';
+import { DefaultPracticeModal } from './components/modals/DefaultPracticeModal.tsx';
 import { TAIAssistant } from './components/chat/TAIAssistant.tsx';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -43,7 +45,7 @@ interface Snapshot {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function App() {
-  const { user, portalDenied, isAdmin, canEdit, logout, ackOnboarding } = useAuth();
+  const { user, portalDenied, ready: authReady, isAdmin, canEdit, logout, setDefaultPractice } = useAuth();
   const [practices, setPractices] = useState<Practice[]>([]);
   const [practiceId, setPracticeId] = useState<string>(() => localStorage.getItem(PRACTICE_STORAGE_KEY) || DEFAULT_PRACTICE_ID);
   // Latest practice selection, so a slow response for the previous practice never overwrites the map
@@ -67,6 +69,7 @@ export default function App() {
   // The tour opens by itself at most once per page load, even if "Don't show again" is unchecked
   const tourAutoShown = useRef(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [defaultPracticeOpen, setDefaultPracticeOpen] = useState(false);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -178,12 +181,12 @@ export default function App() {
   };
 
   // Creates a practice (admins only, enforced by the server) and switches to its empty map
-  const handleCreatePractice = async (name: string): Promise<string | null> => {
+  const handleCreatePractice = async (name: string, description: string, icon: string | null): Promise<string | null> => {
     try {
       const res = await fetch('/api/practices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, description, icon }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -347,6 +350,16 @@ export default function App() {
   useEffect(() => {
     loadPractices();
   }, [loadPractices]);
+
+  // The default practice (chosen at first login, or in the user menu) is the one opened at sign-in
+  const appliedDefault = useRef<string | null>(null);
+  useEffect(() => {
+    const preferred = user?.defaultPracticeId;
+    if (!preferred || preferred === appliedDefault.current) return;
+    appliedDefault.current = preferred;
+    if (preferred !== practiceRef.current) selectPractice(preferred);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.defaultPracticeId]);
 
   // First visit (decided by the browser's local storage): show the tour once the map is on screen
   useEffect(() => {
@@ -634,11 +647,6 @@ export default function App() {
         onViewChange={setView}
         filters={filters}
         onFilterChange={setFilters}
-        onNewPhase={() => {
-          setEditingPhase(null);
-          setTargetPhaseIndex(phases.length);
-          setPhaseModalOpen(true);
-        }}
         onOpenAuditLog={() => setAuditLogModalOpen(true)}
         onOpenSettings={() => {
           setSettingsTab('ai');
@@ -655,14 +663,24 @@ export default function App() {
         onLogin={() => setLoginOpen(true)}
         onLogout={logout}
         onChangePassword={() => setChangePasswordOpen(true)}
+        onDefaultPractice={() => setDefaultPracticeOpen(true)}
         onStartTour={() => setTourOpen(true)}
+        onShowSplash={() => setSplashOpen(true)}
       />
 
       {view === 'map' && <FilterBar filters={filters} onFilterChange={setFilters} />}
 
       {/* Main Workspace Canvas Area */}
       <div data-tour="workspace" className="flex-1 relative overflow-hidden flex">
-        {view === 'dashboard' ? (
+        {view === 'kanban' ? (
+          <KanbanBoard
+            items={items}
+            phases={phases}
+            readOnly={readOnly}
+            onChangeType={handleChangeType}
+            onOpenDetails={handleSelectItem}
+          />
+        ) : view === 'dashboard' ? (
           <Dashboard
             items={items}
             phases={phases}
@@ -757,13 +775,14 @@ export default function App() {
         )}
 
         {/* Item Detail Drawer (Right side) */}
-        {view === 'map' && selectedItem && (
+        {(view === 'map' || view === 'kanban') && selectedItem && (
           <ItemDrawer
             readOnly={readOnly}
             item={selectedItem}
             phases={phases}
             onClose={() => setFocusedItemId(null)}
             onFocusPhase={(pid) => {
+              setView('map');
               setFocusedPhaseId(pid);
               setFocusedItemId(null);
             }}
@@ -930,15 +949,17 @@ export default function App() {
 
       {portalDenied && !user && <AccessDenied />}
 
-      {splashOpen && (
+      {/* Waits for the session check: the content depends on whether the user is new */}
+      {splashOpen && authReady && (
         <SplashScreen
           onboarding={onboarding}
           userName={user?.displayName}
+          practices={practices}
+          currentPracticeId={user?.defaultPracticeId ?? practiceId}
+          onChoosePractice={setDefaultPractice}
           onDone={() => {
             sessionStorage.setItem(SPLASH_STORAGE_KEY, '1');
             setSplashOpen(false);
-            // The welcome message is shown once
-            if (onboarding) void ackOnboarding();
           }}
         />
       )}
@@ -954,6 +975,14 @@ export default function App() {
       />
 
       <LoginModal isOpen={loginOpen && !user} onClose={() => setLoginOpen(false)} />
+
+      <DefaultPracticeModal
+        isOpen={defaultPracticeOpen}
+        practices={practices}
+        currentId={user?.defaultPracticeId ?? null}
+        onClose={() => setDefaultPracticeOpen(false)}
+        onSaved={() => showToast('Default practice updated.')}
+      />
 
       {/* A temporary password (first admin login, or reset by an admin) must be replaced right away */}
       <ChangePasswordModal

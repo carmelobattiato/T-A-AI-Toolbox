@@ -226,14 +226,19 @@ export function registerAuthRoutes(app: Express) {
     res.json({ success: true });
   });
 
-  // The welcome message of a new portal user has been shown: do not show it again
-  app.post('/api/auth/ack-onboarding', (req: Request, res: Response) => {
+  // Own default practice (chosen at first login, changeable later). Any signed-in user, any role.
+  app.patch('/api/auth/default-practice', (req: Request, res: Response) => {
     if (!req.user) {
       res.status(401).json({ error: 'Sign in to continue' });
       return;
     }
-    userStore.ackOnboarding(req.user.id);
-    res.json({ success: true });
+    try {
+      const practiceIds = db.getPractices().map(p => p.id);
+      const user = userStore.setDefaultPractice(req.user.id, req.body?.practiceId, practiceIds);
+      res.json({ user });
+    } catch (err) {
+      sendError(res, err);
+    }
   });
 
   app.get('/api/auth/me', (req: Request, res: Response) => {
@@ -244,6 +249,11 @@ export function registerAuthRoutes(app: Express) {
   app.post('/api/auth/password', (req: Request, res: Response) => {
     if (!req.user) {
       res.status(401).json({ error: 'Sign in to continue' });
+      return;
+    }
+    // Only administrators change their own password; other users' passwords are not changed from the app
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Only administrators can change their password here' });
       return;
     }
     try {

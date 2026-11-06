@@ -5,13 +5,16 @@ interface AuthContextValue {
   user: AuthUser | null;
   // The portal cookie is present but does not give access: the app shows the "not authorized" screen
   portalDenied: boolean;
+  // False until the first session check has answered: the splash waits for it (its content depends on the user)
+  ready: boolean;
   isAdmin: boolean;
   // True when the user may write on the practice (admins: every practice)
   canEdit: (practiceId: string) => boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  ackOnboarding: () => Promise<void>;
+  // Sets the practice opened at login (the splash choice, or Settings later)
+  setDefaultPractice: (practiceId: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -25,6 +28,7 @@ async function readError(res: Response, fallback: string): Promise<string> {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [portalDenied, setPortalDenied] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -38,6 +42,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (e) {
       console.error('Failed to read the session:', e);
+    } finally {
+      setReady(true);
     }
   }, []);
 
@@ -65,10 +71,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   }, []);
 
-  // The welcome message has been shown: the server stops sending it
-  const ackOnboarding = useCallback(async () => {
-    await fetch('/api/auth/ack-onboarding', { method: 'POST' }).catch(() => {});
-    setUser(prev => (prev ? { ...prev, onboarding: false } : prev));
+  const setDefaultPractice = useCallback(async (practiceId: string) => {
+    const res = await fetch('/api/auth/default-practice', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ practiceId }),
+    });
+    if (!res.ok) throw new Error(await readError(res, 'Could not save the default practice'));
+    setUser((await res.json()).user);
   }, []);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
@@ -85,6 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => ({
       user,
       portalDenied,
+      ready,
       isAdmin: user?.role === 'admin',
       // The server refuses writes until a temporary password has been changed
       // Viewers never edit a practice; they can only add needs (checked by the server on each request)
@@ -93,10 +104,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login,
       logout,
       changePassword,
-      ackOnboarding,
+      setDefaultPractice,
       refresh,
     }),
-    [user, portalDenied, login, logout, changePassword, ackOnboarding, refresh]
+    [user, portalDenied, ready, login, logout, changePassword, setDefaultPractice, refresh]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

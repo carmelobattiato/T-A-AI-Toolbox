@@ -76,7 +76,7 @@ echo "---------------------------------------------------------"
 if [ -n "$USER_JSON" ]; then
     echo "✅ AUTOLOGIN: l'applicazione ti ha loggato come $USER_JSON"
     case "$NEW_ROLE" in
-        onboarding*) echo "🆕 Benvenuto: utente nuovo (o messaggio non ancora visto). Lo splash mostrerà il messaggio viewer." ;;
+        onboarding*) echo "🆕 Primo accesso: nessuna practice di default. Lo splash mostrerà il benvenuto e la scelta della practice." ;;
     esac
 else
     echo "⛔ NESSUN AUTOLOGIN per '$NAME'. Possibili motivi:"

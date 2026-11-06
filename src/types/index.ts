@@ -5,6 +5,10 @@ export const DEFAULT_PRACTICE_ID = 'ta';
 export interface Practice {
   id: string;
   name: string;
+  // Shown to users when they choose a default practice; required at creation, may be empty on older practices
+  description: string;
+  // Icon shown on the practice tile; null = default icon
+  icon?: string | null;
   createdAt: string;
   createdBy?: string;
 }
@@ -20,7 +24,9 @@ export interface AuthUser {
   practices: string[];
   active: boolean;
   mustChangePassword: boolean;
-  // True until the user has seen the welcome message (new users created from the portal)
+  // Practice opened at login; null until the user chooses one
+  defaultPracticeId?: string | null;
+  // True until the user has chosen a default practice (welcome + choice shown in the splash)
   onboarding?: boolean;
 }
 
